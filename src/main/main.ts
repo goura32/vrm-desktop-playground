@@ -11,6 +11,7 @@ import type { AvatarCommand, AvatarStatus, FilePayload } from '../shared/types';
 import type { BundledAssetId } from '../shared/bundledAssets';
 import type { WindowStateSnapshot } from '../shared/windowState';
 import { createInitialWindowState } from '../shared/windowState';
+import { DEFAULT_CHARACTER_POSITION } from '../shared/scenePosition';
 import { getElectronPlatformSwitches } from './platform/linux';
 
 const DEV_SERVER_URL = 'http://127.0.0.1:5173';
@@ -37,7 +38,7 @@ function createInitialAvatarStatus(): AvatarStatus {
     autoBlink: true,
     manualBlink: false,
     lookAt: true,
-    characterPosition: { x: 0.5, y: 0.5 },
+    characterPosition: { ...DEFAULT_CHARACTER_POSITION },
   };
 }
 

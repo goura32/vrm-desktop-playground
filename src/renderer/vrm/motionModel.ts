@@ -1,3 +1,5 @@
+import type { MotionPlayback } from '../../shared/types';
+
 export type MotionLoopMode = 'repeat' | 'once';
 
 export function clampMotionSpeed(value: number): number {
@@ -13,4 +15,17 @@ export function createMotionId(fileName: string, occurrence: number): string {
 
 export function motionLoopMode(loop: boolean): MotionLoopMode {
   return loop ? 'repeat' : 'once';
+}
+
+export function motionPlaybackTransition(previous: MotionPlayback, current: MotionPlayback): MotionPlayback | null {
+  return previous === current ? null : current;
+}
+
+export function shouldPublishMotionCompletion(
+  previous: MotionPlayback,
+  current: MotionPlayback,
+  loading: boolean,
+  ownerIsCurrent: boolean,
+): boolean {
+  return !loading && ownerIsCurrent && previous === 'playing' && motionPlaybackTransition(previous, current) === 'stopped';
 }

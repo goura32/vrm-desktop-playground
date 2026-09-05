@@ -7,6 +7,8 @@ import { MotionController } from '../vrm/MotionController';
 import { parseVrm, parseVrma } from '../vrm/VrmLoader';
 import { detectVrmFormat, toCapability } from '../vrm/vrmModelInfo';
 import { SceneController } from '../scene/SceneController';
+import { DEFAULT_CHARACTER_POSITION } from '../../shared/scenePosition';
+import { shouldPublishMotionCompletion } from '../vrm/motionModel';
 
 const EMPTY_STATUS: AvatarStatus = {
   phase: 'idle',
@@ -20,7 +22,7 @@ const EMPTY_STATUS: AvatarStatus = {
   autoBlink: true,
   manualBlink: false,
   lookAt: true,
-  characterPosition: { x: 0.5, y: 0.5 },
+  characterPosition: { ...DEFAULT_CHARACTER_POSITION },
 };
 
 function errorMessage(error: unknown): string {
@@ -40,6 +42,7 @@ export class AvatarRuntime {
   private modelLoadRequestId = 0;
   private motionLoadRequestId = 0;
   private modelLoading = false;
+  private motionLoading = false;
 
   public constructor(canvas: HTMLCanvasElement, onStatus: (status: AvatarStatus) => void) {
     this.sceneController = new SceneController(canvas);
@@ -115,6 +118,7 @@ export class AvatarRuntime {
     this.modelLoadRequestId += 1;
     this.motionLoadRequestId += 1;
     this.modelLoading = false;
+    this.motionLoading = false;
     this.motionController?.dispose();
     this.lookAtController?.dispose();
     if (this.vrm) {
@@ -128,6 +132,7 @@ export class AvatarRuntime {
     const requestId = ++this.modelLoadRequestId;
     this.motionLoadRequestId += 1;
     this.modelLoading = true;
+    this.motionLoading = false;
     const previousSources = this.motionController?.sourceFiles.map((source) => ({
       fileName: source.fileName,
       animations: [...source.animations],
@@ -192,6 +197,7 @@ export class AvatarRuntime {
     const targetMotionController = this.motionController;
     const modelRequestId = this.modelLoadRequestId;
     const requestId = ++this.motionLoadRequestId;
+    this.motionLoading = true;
     this.publish({ phase: 'loading', message: `Loading VRMA motion: ${fileName}` });
     try {
       const animations = await parseVrma(data);
@@ -203,6 +209,7 @@ export class AvatarRuntime {
       ) {
         return;
       }
+      this.motionLoading = false;
       const added = targetMotionController.addAnimations(fileName, animations);
       if (added.length === 0) {
         throw new Error('No animation in the file is compatible with the current VRM humanoid.');
@@ -217,6 +224,7 @@ export class AvatarRuntime {
       ) {
         return;
       }
+      this.motionLoading = false;
       this.publish({ phase: 'error', message: `VRMA load failed: ${errorMessage(error)}` });
     }
   }
@@ -300,7 +308,24 @@ export class AvatarRuntime {
 
   private update(delta: number): void {
     this.expressionController?.update(delta);
-    this.motionController?.update(delta);
+    const controller = this.motionController;
+    const vrm = this.vrm;
+    const modelRequestId = this.modelLoadRequestId;
+    const motionRequestId = this.motionLoadRequestId;
+    const loading = this.modelLoading || this.motionLoading;
+    const previousPlayback = controller?.playbackState ?? this.status.playback;
+    controller?.update(delta);
+    const ownerIsCurrent =
+      !loading &&
+      !this.modelLoading &&
+      !this.motionLoading &&
+      this.vrm === vrm &&
+      this.motionController === controller &&
+      this.modelLoadRequestId === modelRequestId &&
+      this.motionLoadRequestId === motionRequestId;
+    if (controller && shouldPublishMotionCompletion(previousPlayback, controller.playbackState, loading, ownerIsCurrent)) {
+      this.publishMotion('Motion finished.');
+    }
     this.vrm?.update(delta);
     if (this.status.manualBlink && this.expressionController && !this.expressionController.isBlinking) {
       this.publish({ manualBlink: false });

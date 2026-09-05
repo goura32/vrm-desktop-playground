@@ -16,7 +16,7 @@ Linux の `start` は `--ozone-platform=x11 --no-sandbox` を付けます。Ubun
 - Debug Window の標準 HTML コントロールは Tab / Shift+Tab で移動し、Enter / Space で操作できます。
 - `Open VRM` / `Open VRMA` でローカルファイルを選択できます。公開サンプルは `Load constraint sample`、`Load Seed-san`、`Load bundled VRMA` から読み込めます。
 - Avatar Window は Primary Display 全体を覆う透明オーバーレイで、常時 Click Through です。Click Through / Interaction Mode の切り替えUIや、Avatar Window自体の移動UIはありません。
-- キャラクター位置は正規化 screen-space（左上が`0,0`、右下が`1,1`）で管理し、Debug Window の X/Y入力と矢印ボタンから変更できます。これはBrowserWindowの位置ではなく、Three.js/VRM sceneの位置です。
+- キャラクター位置は正規化 screen-space（左上が`0,0`、右下が`1,1`）で管理し、Debug Window の X/Y入力と矢印ボタンから変更できます。Yはモデルの足元をアンカーとし、これはBrowserWindowの位置ではなく、Three.js/VRM sceneの位置です。
 - VRM を差し替えると、モデル情報・Preset/Custom Expression・Humanoid・LookAt/Spring Bone/VRMA capability が更新されます。
 
 ## アセットとライセンス

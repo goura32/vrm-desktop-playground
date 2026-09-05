@@ -26,7 +26,7 @@ The Linux entry path always appends `--ozone-platform=x11`. On the target Ubuntu
 
 The Avatar Window is created from `screen.getPrimaryDisplay().bounds`, transparent, frameless, non-movable, non-resizable, fullscreen, always-on-top by default, and skipped from the taskbar. Fullscreen is required on GNOME/Xwayland: a normal transparent BrowserWindow was constrained by the window manager to the `workArea` even when `setBounds(display.bounds)` was requested. The main process explicitly enters fullscreen at creation and re-applies both the display bounds and fullscreen state on `display-metrics-changed`, `display-added`, and `display-removed`. It always calls `setIgnoreMouseEvents(true, { forward: true })`; there is no Interaction Mode or BrowserWindow movement control.
 
-The character position is separate from the native window. `SceneController` stores a normalized screen-space coordinate (top-left `0,0`, bottom-right `1,1`) and projects the VRM scene root to that screen coordinate with the Three.js camera. `AvatarRuntime` exposes position commands through the existing validated avatar-command IPC, and the Debug Window sends keyboard-accessible X/Y and directional controls. The position is preserved when the model is replaced and when the overlay is resized.
+The character position is separate from the native window. `SceneController` stores a normalized screen-space coordinate (top-left `0,0`, bottom-right `1,1`) and projects the VRM scene root to that screen coordinate with the Three.js camera. The Y coordinate is a feet anchor, using the model's local feet point derived from the world-space bounds after root normalization, so moving the character vertically does not change the intended foot placement semantics across models. Before projection, the requested target is clamped against the projected model bounds with a small edge margin; this keeps the model at least partially visible and prevents edge positions from making it completely inaccessible. `AvatarRuntime` exposes position commands through the existing validated avatar-command IPC, and the Debug Window sends keyboard-accessible X/Y and directional controls. The position is preserved when the model is replaced and when the overlay is resized.
 
 ## VRM runtime
 
@@ -34,7 +34,7 @@ The character position is separate from the native window. `SceneController` sto
 
 - `ExpressionController`: preset/custom expression discovery, clamped weights, reset, mouth presets, manual blink, and auto blink.
 - `LookAtController`: a scene target driven by normalized pointer coordinates and VRM LookAt enable/disable state.
-- `MotionController`: VRMA-to-`AnimationClip` conversion via `createVRMAnimationClip`, AnimationMixer play/pause/stop, repeat/once loop, speed clamping, and motion switching.
+- `MotionController`: VRMA-to-`AnimationClip` conversion via `createVRMAnimationClip`, AnimationMixer play/pause/stop, repeat/once loop, speed clamping, and motion switching. `AvatarRuntime` publishes a terminal one-shot transition only while the model/motion load generation and controller identity are current, so the Debug Window does not remain stuck at `playing` after a non-looping clip finishes or get overwritten by a stale load.
 
 Missing optional VRM capabilities are represented as `unsupported` in the Debug Window rather than throwing. A failed VRM/VRMA load is converted to a status message and does not terminate the app. Stale asynchronous loads are discarded, and replaced VRM scenes are deep-disposed.
 

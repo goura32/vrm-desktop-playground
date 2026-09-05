@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { AvatarCommand, AvatarStatus, Capability, ExpressionInfo } from '../../shared/types';
-import { DEFAULT_CHARACTER_MOVE_STEP } from '../../shared/scenePosition';
+import { DEFAULT_CHARACTER_MOVE_STEP, DEFAULT_CHARACTER_POSITION } from '../../shared/scenePosition';
 import { createInitialWindowState } from '../../shared/windowState';
 import type { WindowStateSnapshot } from '../../shared/windowState';
 import { directionForKey, normalizeMoveStep, parseNormalizedCoordinate } from './controlModel';
@@ -19,7 +19,7 @@ const EMPTY_STATUS: AvatarStatus = {
   autoBlink: true,
   manualBlink: false,
   lookAt: true,
-  characterPosition: { x: 0.5, y: 0.5 },
+  characterPosition: { ...DEFAULT_CHARACTER_POSITION },
 };
 
 const CAPABILITY_LABELS: Record<string, string> = {
@@ -301,7 +301,7 @@ export function DebugWindow(): ReactElement {
       <section className="status-section" aria-labelledby="status-heading">
         <div className="section-heading"><h2 id="status-heading">Status / errors</h2><span className="mono">{avatarStatus.playback}</span></div>
         <p className={avatarStatus.phase === 'error' ? 'error-text' : 'status-text'} role="status">{avatarStatus.message}</p>
-        <p className="hint">Character position: <span className="mono">{avatarStatus.characterPosition.x.toFixed(2)}, {avatarStatus.characterPosition.y.toFixed(2)}</span> · normalized screen-space (0,0 = top-left) · Arrow keys move the character · backend: <span className="mono">Xwayland</span></p>
+        <p className="hint">Character feet position: <span className="mono">{avatarStatus.characterPosition.x.toFixed(2)}, {avatarStatus.characterPosition.y.toFixed(2)}</span> · normalized screen-space (0,0 = top-left) · Y anchors the feet · Arrow keys move the character · backend: <span className="mono">Xwayland</span></p>
       </section>
     </main>
   );

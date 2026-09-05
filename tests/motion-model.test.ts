@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   clampMotionSpeed,
   createMotionId,
+  motionPlaybackTransition,
   motionLoopMode,
+  shouldPublishMotionCompletion,
 } from '../src/renderer/vrm/motionModel';
 
 describe('motion controls', () => {
@@ -21,5 +23,17 @@ describe('motion controls', () => {
   it('maps loop checkbox state to the Three.js loop mode', () => {
     expect(motionLoopMode(true)).toBe('repeat');
     expect(motionLoopMode(false)).toBe('once');
+  });
+
+  it('detects one-shot playback completion for status publication', () => {
+    expect(motionPlaybackTransition('playing', 'stopped')).toBe('stopped');
+    expect(motionPlaybackTransition('playing', 'playing')).toBeNull();
+    expect(motionPlaybackTransition('paused', 'stopped')).toBe('stopped');
+  });
+
+  it('suppresses stale completion notifications during model loading', () => {
+    expect(shouldPublishMotionCompletion('playing', 'stopped', false, true)).toBe(true);
+    expect(shouldPublishMotionCompletion('playing', 'stopped', true, true)).toBe(false);
+    expect(shouldPublishMotionCompletion('playing', 'stopped', false, false)).toBe(false);
   });
 });

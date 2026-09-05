@@ -3,10 +3,18 @@ import type { VRM } from '@pixiv/three-vrm';
 import type { CharacterMoveDirection, CharacterPosition } from '../../shared/types';
 import {
   clampCharacterPosition,
+  clampCharacterPositionToProjectedBounds,
   DEFAULT_CHARACTER_MOVE_STEP,
   DEFAULT_CHARACTER_POSITION,
   moveCharacterPosition,
 } from '../../shared/scenePosition';
+import type { ProjectedModelBounds } from '../../shared/scenePosition';
+
+export function getFeetAnchorLocal(scene: THREE.Object3D, bounds: THREE.Box3): THREE.Vector3 {
+  scene.updateWorldMatrix(true, false);
+  const center = bounds.getCenter(new THREE.Vector3());
+  return scene.worldToLocal(new THREE.Vector3(center.x, bounds.min.y, center.z));
+}
 
 export class SceneController {
   public readonly scene: THREE.Scene;
@@ -51,12 +59,13 @@ export class SceneController {
     const bounds = new THREE.Box3().setFromObject(vrm.scene);
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
+    const feetAnchorLocal = getFeetAnchorLocal(vrm.scene, bounds);
     const height = Math.max(size.y, 1);
 
     vrm.scene.position.x -= center.x;
     vrm.scene.position.y -= bounds.min.y;
     vrm.scene.position.z -= center.z;
-    this.modelAnchor.set(0, center.y - bounds.min.y, 0);
+    this.modelAnchor.copy(feetAnchorLocal);
     this.camera.position.set(0, height * 0.53, Math.max(3.2, height * 2.6));
     this.camera.near = Math.max(0.01, height / 100);
     this.camera.far = Math.max(100, height * 10);
@@ -131,9 +140,17 @@ export class SceneController {
       return;
     }
 
+    this.model.scene.updateWorldMatrix(true, true);
+    const modelBounds = new THREE.Box3().setFromObject(this.model.scene);
     const anchor = this.modelAnchor.clone();
     this.model.scene.localToWorld(anchor);
     const projectedAnchor = anchor.clone().project(this.camera);
+    const projectedBounds = this.projectModelBounds(modelBounds);
+    this.characterPosition = clampCharacterPositionToProjectedBounds(
+      this.characterPosition,
+      projectedAnchor,
+      projectedBounds,
+    );
     const target = new THREE.Vector3(
       this.characterPosition.x * 2 - 1,
       1 - this.characterPosition.y * 2,
@@ -141,5 +158,24 @@ export class SceneController {
     ).unproject(this.camera);
     this.model.scene.position.x += target.x - anchor.x;
     this.model.scene.position.y += target.y - anchor.y;
+  }
+
+  private projectModelBounds(bounds: THREE.Box3): ProjectedModelBounds {
+    const corners = [
+      new THREE.Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
+      new THREE.Vector3(bounds.min.x, bounds.min.y, bounds.max.z),
+      new THREE.Vector3(bounds.min.x, bounds.max.y, bounds.min.z),
+      new THREE.Vector3(bounds.min.x, bounds.max.y, bounds.max.z),
+      new THREE.Vector3(bounds.max.x, bounds.min.y, bounds.min.z),
+      new THREE.Vector3(bounds.max.x, bounds.min.y, bounds.max.z),
+      new THREE.Vector3(bounds.max.x, bounds.max.y, bounds.min.z),
+      new THREE.Vector3(bounds.max.x, bounds.max.y, bounds.max.z),
+    ].map((corner) => corner.project(this.camera));
+    return {
+      minX: Math.min(...corners.map((corner) => corner.x)),
+      maxX: Math.max(...corners.map((corner) => corner.x)),
+      minY: Math.min(...corners.map((corner) => corner.y)),
+      maxY: Math.max(...corners.map((corner) => corner.y)),
+    };
   }
 }
