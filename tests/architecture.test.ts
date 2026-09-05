@@ -34,8 +34,13 @@ describe('Electron security boundary', () => {
     expect(main).toContain('setIgnoreMouseEvents(true, { forward: true })');
     expect(main).toContain('resizable: false');
     expect(main).toContain('movable: false');
+    expect(main).toContain('fullscreen: true');
+    expect(main).toContain('avatarWindow.setFullScreen(true)');
     expect(main).toContain('width: display.bounds.width');
     expect(main).toContain('height: display.bounds.height');
+    expect(main).toContain('display.workArea');
+    expect(main).toContain('display.scaleFactor');
+    expect(main).toContain('avatarWindow.getBounds()');
     expect(main).not.toContain('IPC_CHANNELS.setPosition');
     expect(main).not.toContain('IPC_CHANNELS.moveBy');
     expect(avatarWindow).toContain('setLookAtTarget');

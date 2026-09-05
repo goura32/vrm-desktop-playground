@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, screen } from 'electron';
-import type { IpcMainEvent, IpcMainInvokeEvent, OpenDialogOptions } from 'electron';
+import type { Display, IpcMainEvent, IpcMainInvokeEvent, OpenDialogOptions, Rectangle } from 'electron';
 import { access, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -119,13 +119,23 @@ function enforceAvatarOverlayPolicy(): void {
   avatarWindow.setIgnoreMouseEvents(true, { forward: true });
 }
 
+function formatBounds(bounds: Rectangle): string {
+  return `${bounds.x},${bounds.y} ${bounds.width}x${bounds.height}`;
+}
+
+function logPrimaryDisplayGeometry(display: Display, avatarBounds: Rectangle): void {
+  log(`primary display geometry: bounds=${formatBounds(display.bounds)} workArea=${formatBounds(display.workArea)} scaleFactor=${display.scaleFactor} avatarWindow.getBounds=${formatBounds(avatarBounds)}`);
+}
+
 function applyPrimaryDisplayBounds(): void {
   if (!avatarWindow || avatarWindow.isDestroyed()) {
     return;
   }
 
-  const bounds = screen.getPrimaryDisplay().bounds;
+  const display = screen.getPrimaryDisplay();
+  const bounds = display.bounds;
   avatarWindow.setBounds(bounds);
+  avatarWindow.setFullScreen(true);
   windowState = {
     ...windowState,
     avatar: {
@@ -136,6 +146,7 @@ function applyPrimaryDisplayBounds(): void {
     },
   };
   enforceAvatarOverlayPolicy();
+  logPrimaryDisplayGeometry(display, avatarWindow.getBounds());
   broadcastWindowState();
 }
 
@@ -405,7 +416,7 @@ function createWindows(): void {
     alwaysOnTop: windowState.alwaysOnTop,
     resizable: false,
     movable: false,
-    fullscreenable: false,
+    fullscreen: true,
     show: false,
     backgroundColor: '#00000000',
     webPreferences,
@@ -417,6 +428,9 @@ function createWindows(): void {
   avatarWindow.webContents.on('did-finish-load', () => {
     avatarWindow?.showInactive();
     enforceAvatarOverlayPolicy();
+    if (avatarWindow && !avatarWindow.isDestroyed()) {
+      logPrimaryDisplayGeometry(display, avatarWindow.getBounds());
+    }
   });
 
   debugWindow = new BrowserWindow({
@@ -447,6 +461,7 @@ function createWindows(): void {
   loadRenderer(avatarWindow, 'avatar.html');
   loadRenderer(debugWindow, 'index.html');
   enforceAvatarOverlayPolicy();
+  logPrimaryDisplayGeometry(display, avatarWindow.getBounds());
 }
 
 if (process.platform === 'linux') {

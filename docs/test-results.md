@@ -1,6 +1,6 @@
 # 最終検証記録
 
-実施日時: 2026-09-05 20:49 JST
+実施日時: 2026-09-05 21:12 JST
 対象: Ubuntu 26.04 / GNOME Wayland / Xwayland (`DISPLAY=:0`)
 Node.js: v22.23.2
 Electron: 44.2.0
@@ -30,9 +30,11 @@ Build では Three.js renderer chunk が 500 kB を超えるという Vite の�
 - Debug Window と Avatar Window が別ウィンドウで起動。
 - `VRM1_Constraint_Twist_Sample.vrm` の VRM 1.0 load が `ready`。
 - `test.vrma` の load が `ready`、1 motion を認識。
-- Primary Display bounds は `67, 29 · 2493 × 1411`。
-- Avatar Window bounds は Primary Displayと同じ `67, 29 · 2493 × 1411`。Debug Windowは `420 × 720`。
-- AvatarのX11 windowはdepth 32 / TrueColor / viewableで、`_NET_WM_STATE_ABOVE`を確認。
+- Primary Display `bounds` は `0,0 2560x1440`。
+- Primary Display `workArea` は `67,29 2493x1411`、`scaleFactor` は `1`。
+- fullscreen state適用後の `avatarWindow.getBounds()` は起動直後・renderer load後ともに `0,0 2560x1440`。Debug Windowは `420 × 720`。
+- 初回実測では、通常のnon-fullscreen BrowserWindowがGNOME/Mutter/Xwaylandにより`workArea`サイズへclampされ、`avatarWindow.getBounds()`が`0,0 2493x1411`となっていた。原因は通常windowのWM制約であり、`fullscreen: true`と`setFullScreen(true)`をcreation/display変更時に適用して解消した。
+- 修正後のAvatar X11 windowは`_NET_WM_STATE_FULLSCREEN` / `_NET_WM_STATE_ABOVE`、depth 32 / TrueColor / border 0を確認。
 - Avatar Windowはtransparent、frameless、non-movable、non-resizable、描画専用overlayとして構成。
 - Computer Useの画面確認で、全身が収まった透明Avatar viewport、Debugの`ready`、Primary Display bounds、Always on Top、scene-space位置入力、VRM/VRMA controls、expression controls、LookAt/Spring Bone/VRMA capability表示を確認。
 - キャラクター位置は正規化screen-spaceの初期値`0.50, 0.50`。Debug UIにはX/Y入力、Set character position、矢印ボタン、Arrow key経路がある。
