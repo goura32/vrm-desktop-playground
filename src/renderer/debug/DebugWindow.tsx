@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { AvatarCommand, AvatarStatus, Capability, ExpressionInfo } from '../../shared/types';
+import { DEFAULT_CHARACTER_MOVE_STEP } from '../../shared/scenePosition';
 import { createInitialWindowState } from '../../shared/windowState';
 import type { WindowStateSnapshot } from '../../shared/windowState';
-import { normalizeMoveStep, parseCoordinate } from './controlModel';
+import { directionForKey, normalizeMoveStep, parseNormalizedCoordinate } from './controlModel';
 import './styles.css';
 
 const EMPTY_STATUS: AvatarStatus = {
@@ -18,6 +19,7 @@ const EMPTY_STATUS: AvatarStatus = {
   autoBlink: true,
   manualBlink: false,
   lookAt: true,
+  characterPosition: { x: 0.5, y: 0.5 },
 };
 
 const CAPABILITY_LABELS: Record<string, string> = {
@@ -43,9 +45,9 @@ function expressionTitle(expression: ExpressionInfo): string {
 export function DebugWindow(): ReactElement {
   const [windowState, setWindowState] = useState<WindowStateSnapshot>(createInitialWindowState());
   const [avatarStatus, setAvatarStatus] = useState<AvatarStatus>(EMPTY_STATUS);
-  const [moveStep, setMoveStep] = useState('10');
-  const [positionX, setPositionX] = useState('100');
-  const [positionY, setPositionY] = useState('80');
+  const [moveStep, setMoveStep] = useState(String(DEFAULT_CHARACTER_MOVE_STEP));
+  const [positionX, setPositionX] = useState(String(EMPTY_STATUS.characterPosition.x));
+  const [positionY, setPositionY] = useState(String(EMPTY_STATUS.characterPosition.y));
   const [coordinateError, setCoordinateError] = useState('');
   const api = typeof window === 'undefined' ? undefined : window.vrmDesktop;
 
@@ -59,22 +61,18 @@ export function DebugWindow(): ReactElement {
     void api.getWindowState().then((state) => {
       if (active) {
         setWindowState(state);
-        setMoveStep(String(state.moveStep));
-        setPositionX(String(Math.round(state.avatar.x)));
-        setPositionY(String(Math.round(state.avatar.y)));
       }
     });
     const removeWindowStateListener = api.onWindowState((state) => {
       if (active) {
         setWindowState(state);
-        setMoveStep(String(state.moveStep));
-        setPositionX(String(Math.round(state.avatar.x)));
-        setPositionY(String(Math.round(state.avatar.y)));
       }
     });
     const removeAvatarStatusListener = api.onAvatarStatus((status) => {
       if (active) {
         setAvatarStatus(status);
+        setPositionX(status.characterPosition.x.toFixed(2));
+        setPositionY(status.characterPosition.y.toFixed(2));
       }
     });
 
@@ -85,6 +83,33 @@ export function DebugWindow(): ReactElement {
     };
   }, [api]);
 
+  useEffect(() => {
+    if (!api) {
+      return undefined;
+    }
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const target = event.target;
+      if (
+        target instanceof HTMLSelectElement ||
+        target instanceof HTMLTextAreaElement ||
+        event.altKey || event.ctrlKey || event.metaKey
+      ) {
+        return;
+      }
+
+      const direction = directionForKey(event.key, event.code);
+      if (!direction) {
+        return;
+      }
+      event.preventDefault();
+      send(api, { type: 'move-character', direction, step: normalizeMoveStep(moveStep) });
+    };
+
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [api, moveStep]);
+
   const applyWindowState = async (next: Promise<WindowStateSnapshot>): Promise<void> => {
     setWindowState(await next);
   };
@@ -92,22 +117,18 @@ export function DebugWindow(): ReactElement {
   const handleMove = (direction: 'up' | 'down' | 'left' | 'right'): void => {
     const step = normalizeMoveStep(moveStep);
     setMoveStep(String(step));
-    if (api) {
-      void applyWindowState(api.moveBy(direction, step));
-    }
+    send(api, { type: 'move-character', direction, step });
   };
 
   const handleSetPosition = (): void => {
-    const x = parseCoordinate(positionX);
-    const y = parseCoordinate(positionY);
+    const x = parseNormalizedCoordinate(positionX);
+    const y = parseNormalizedCoordinate(positionY);
     if (x === null || y === null) {
-      setCoordinateError('Position X and Y must be finite numbers.');
+      setCoordinateError('Character X and Y must be numbers from 0 to 1.');
       return;
     }
     setCoordinateError('');
-    if (api) {
-      void applyWindowState(api.setPosition(x, y));
-    }
+    send(api, { type: 'set-character-position', position: { x, y } });
   };
 
 
@@ -142,48 +163,26 @@ export function DebugWindow(): ReactElement {
             />
             <span>Always on Top</span>
           </label>
-          <label className="toggle-control" htmlFor="click-through">
-            <input
-              id="click-through"
-              type="checkbox"
-              checked={windowState.clickThrough}
-              onChange={(event) => {
-                if (api) void applyWindowState(api.setClickThrough(event.target.checked));
-              }}
-            />
-            <span>Click Through</span>
-          </label>
-          <label className="toggle-control" htmlFor="interaction-mode">
-            <input
-              id="interaction-mode"
-              type="checkbox"
-              checked={windowState.interactionMode}
-              onChange={(event) => {
-                if (api) void applyWindowState(api.setInteractionMode(event.target.checked));
-              }}
-            />
-            <span>Interaction Mode</span>
-          </label>
         </div>
+        <p className="hint">Avatar overlay: Primary Display bounds · transparent · always Click Through. Window movement controls are disabled.</p>
 
         <div className="state-grid" aria-label="Current window state">
-          <div><span>effective click through</span><strong>{String(windowState.effectiveClickThrough)}</strong></div>
-          <div><span>avatar window</span><strong>{windowState.avatar.width} × {windowState.avatar.height}</strong></div>
+          <div><span>avatar overlay bounds</span><strong>{windowState.avatar.x}, {windowState.avatar.y} · {windowState.avatar.width} × {windowState.avatar.height}</strong></div>
           <div><span>debug window</span><strong>{windowState.debug.width} × {windowState.debug.height}</strong></div>
         </div>
 
         <div className="position-grid">
-          <label htmlFor="position-x">Position X<input id="position-x" type="number" value={positionX} onChange={(event) => setPositionX(event.target.value)} /></label>
-          <label htmlFor="position-y">Position Y<input id="position-y" type="number" value={positionY} onChange={(event) => setPositionY(event.target.value)} /></label>
-          <label htmlFor="move-step">Move step (px)<input id="move-step" type="number" min="1" step="1" value={moveStep} onChange={(event) => setMoveStep(event.target.value)} /></label>
-          <button id="set-position" type="button" className="secondary-button" onClick={handleSetPosition}>Set position</button>
+          <label htmlFor="character-position-x">Character X (0..1)<input id="character-position-x" type="number" min="0" max="1" step="0.01" value={positionX} autoFocus onChange={(event) => setPositionX(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') handleSetPosition(); }} /></label>
+          <label htmlFor="character-position-y">Character Y (0..1)<input id="character-position-y" type="number" min="0" max="1" step="0.01" value={positionY} onChange={(event) => setPositionY(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') handleSetPosition(); }} /></label>
+          <label htmlFor="character-move-step">Move step<input id="character-move-step" type="number" min="0.01" max="1" step="0.01" value={moveStep} onChange={(event) => setMoveStep(event.target.value)} /></label>
+          <button id="set-character-position" type="button" className="secondary-button" onClick={handleSetPosition}>Set character position</button>
         </div>
         {coordinateError && <p className="error-text" role="alert">{coordinateError}</p>}
-        <div className="move-grid" aria-label="Move avatar window">
-          <button id="move-up" type="button" onClick={() => handleMove('up')} aria-label="Move avatar up">▲</button>
-          <button id="move-down" type="button" onClick={() => handleMove('down')} aria-label="Move avatar down">▼</button>
-          <button id="move-left" type="button" onClick={() => handleMove('left')} aria-label="Move avatar left">◀</button>
-          <button id="move-right" type="button" onClick={() => handleMove('right')} aria-label="Move avatar right">▶</button>
+        <div className="move-grid" aria-label="Move character in scene space">
+          <button id="move-character-up" type="button" onClick={() => handleMove('up')} aria-label="Move character up">▲</button>
+          <button id="move-character-down" type="button" onClick={() => handleMove('down')} aria-label="Move character down">▼</button>
+          <button id="move-character-left" type="button" onClick={() => handleMove('left')} aria-label="Move character left">◀</button>
+          <button id="move-character-right" type="button" onClick={() => handleMove('right')} aria-label="Move character right">▶</button>
         </div>
       </section>
 
@@ -302,7 +301,7 @@ export function DebugWindow(): ReactElement {
       <section className="status-section" aria-labelledby="status-heading">
         <div className="section-heading"><h2 id="status-heading">Status / errors</h2><span className="mono">{avatarStatus.playback}</span></div>
         <p className={avatarStatus.phase === 'error' ? 'error-text' : 'status-text'} role="status">{avatarStatus.message}</p>
-        <p className="hint">Avatar position: <span className="mono">{Math.round(windowState.avatar.x)}, {Math.round(windowState.avatar.y)}</span> · backend: <span className="mono">Xwayland</span></p>
+        <p className="hint">Character position: <span className="mono">{avatarStatus.characterPosition.x.toFixed(2)}, {avatarStatus.characterPosition.y.toFixed(2)}</span> · normalized screen-space (0,0 = top-left) · Arrow keys move the character · backend: <span className="mono">Xwayland</span></p>
       </section>
     </main>
   );

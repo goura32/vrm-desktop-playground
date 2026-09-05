@@ -24,7 +24,9 @@ The main process applies runtime guards to renderer-supplied file payloads, avat
 
 The Linux entry path always appends `--ozone-platform=x11`. On the target Ubuntu GNOME Wayland session this selects the Xwayland backend, which is the PoC's supported path for transparent, frameless, always-on-top windows. Native Wayland is intentionally not the acceptance target because transparent/frameless window behavior is platform- and compositor-dependent.
 
-The Avatar Window is approximately 600×800, transparent, frameless, always-on-top by default, and skipped from the taskbar. Click Through is implemented with Electron's `setIgnoreMouseEvents`; Interaction Mode temporarily disables effective click-through so the avatar can receive pointer input. Position and directional movement are handled by the main process.
+The Avatar Window is created from `screen.getPrimaryDisplay().bounds`, transparent, frameless, non-movable, non-resizable, always-on-top by default, and skipped from the taskbar. The main process re-applies those bounds on `display-metrics-changed`, `display-added`, and `display-removed`. It always calls `setIgnoreMouseEvents(true, { forward: true })`; there is no Interaction Mode or BrowserWindow movement control.
+
+The character position is separate from the native window. `SceneController` stores a normalized screen-space coordinate (top-left `0,0`, bottom-right `1,1`) and projects the VRM scene root to that screen coordinate with the Three.js camera. `AvatarRuntime` exposes position commands through the existing validated avatar-command IPC, and the Debug Window sends keyboard-accessible X/Y and directional controls. The position is preserved when the model is replaced and when the overlay is resized.
 
 ## VRM runtime
 

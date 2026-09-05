@@ -1,5 +1,12 @@
 import * as THREE from 'three';
 import type { VRM } from '@pixiv/three-vrm';
+import type { CharacterMoveDirection, CharacterPosition } from '../../shared/types';
+import {
+  clampCharacterPosition,
+  DEFAULT_CHARACTER_MOVE_STEP,
+  DEFAULT_CHARACTER_POSITION,
+  moveCharacterPosition,
+} from '../../shared/scenePosition';
 
 export class SceneController {
   public readonly scene: THREE.Scene;
@@ -8,6 +15,9 @@ export class SceneController {
   private readonly clock = new THREE.Clock();
   private frameId: number | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private model: VRM | null = null;
+  private modelAnchor = new THREE.Vector3();
+  private characterPosition: CharacterPosition = { ...DEFAULT_CHARACTER_POSITION };
 
   public constructor(canvas: HTMLCanvasElement) {
     this.scene = new THREE.Scene();
@@ -36,6 +46,7 @@ export class SceneController {
   }
 
   public setModel(vrm: VRM): void {
+    this.model = vrm;
     this.scene.add(vrm.scene);
     const bounds = new THREE.Box3().setFromObject(vrm.scene);
     const size = bounds.getSize(new THREE.Vector3());
@@ -45,15 +56,36 @@ export class SceneController {
     vrm.scene.position.x -= center.x;
     vrm.scene.position.y -= bounds.min.y;
     vrm.scene.position.z -= center.z;
-    this.camera.position.set(0, height * 0.53, Math.max(2.2, height * 1.65));
+    this.modelAnchor.set(0, center.y - bounds.min.y, 0);
+    this.camera.position.set(0, height * 0.53, Math.max(3.2, height * 2.6));
     this.camera.near = Math.max(0.01, height / 100);
     this.camera.far = Math.max(100, height * 10);
     this.camera.updateProjectionMatrix();
     this.camera.lookAt(0, height * 0.52, 0);
+    this.camera.updateMatrixWorld(true);
+    this.applyCharacterPosition();
+  }
+
+  public get currentCharacterPosition(): CharacterPosition {
+    return { ...this.characterPosition };
+  }
+
+  public setCharacterPosition(position: CharacterPosition): CharacterPosition {
+    this.characterPosition = clampCharacterPosition(position);
+    this.applyCharacterPosition();
+    return this.currentCharacterPosition;
+  }
+
+  public moveCharacter(direction: CharacterMoveDirection, step = DEFAULT_CHARACTER_MOVE_STEP): CharacterPosition {
+    return this.setCharacterPosition(moveCharacterPosition(this.characterPosition, direction, step));
   }
 
   public removeModel(vrm: VRM): void {
     this.scene.remove(vrm.scene);
+    if (this.model === vrm) {
+      this.model = null;
+      this.modelAnchor.set(0, 0, 0);
+    }
   }
 
   public start(onUpdate: (delta: number) => void): void {
@@ -77,17 +109,37 @@ export class SceneController {
 
   public resize(): void {
     const canvas = this.renderer.domElement;
-    const width = Math.max(1, canvas.clientWidth || canvas.parentElement?.clientWidth || 600);
-    const height = Math.max(1, canvas.clientHeight || canvas.parentElement?.clientHeight || 800);
+    const width = Math.max(1, canvas.clientWidth || canvas.parentElement?.clientWidth || 1);
+    const height = Math.max(1, canvas.clientHeight || canvas.parentElement?.clientHeight || 1);
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.applyCharacterPosition();
   }
 
   public dispose(): void {
     this.stop();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    this.model = null;
+    this.modelAnchor.set(0, 0, 0);
     this.renderer.dispose();
+  }
+
+  private applyCharacterPosition(): void {
+    if (!this.model) {
+      return;
+    }
+
+    const anchor = this.modelAnchor.clone();
+    this.model.scene.localToWorld(anchor);
+    const projectedAnchor = anchor.clone().project(this.camera);
+    const target = new THREE.Vector3(
+      this.characterPosition.x * 2 - 1,
+      1 - this.characterPosition.y * 2,
+      projectedAnchor.z,
+    ).unproject(this.camera);
+    this.model.scene.position.x += target.x - anchor.x;
+    this.model.scene.position.y += target.y - anchor.y;
   }
 }

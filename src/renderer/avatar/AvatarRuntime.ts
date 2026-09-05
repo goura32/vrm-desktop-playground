@@ -20,6 +20,7 @@ const EMPTY_STATUS: AvatarStatus = {
   autoBlink: true,
   manualBlink: false,
   lookAt: true,
+  characterPosition: { x: 0.5, y: 0.5 },
 };
 
 function errorMessage(error: unknown): string {
@@ -97,6 +98,12 @@ export class AvatarRuntime {
         this.motionController?.setSpeed(command.speed);
         this.publishMotion(`Motion speed set to ${this.motionController?.playbackSpeed.toFixed(1) ?? '1.0'}×.`);
         break;
+      case 'set-character-position':
+        this.setCharacterPosition(command.position);
+        break;
+      case 'move-character':
+        this.moveCharacter(command.direction, command.step);
+        break;
     }
   }
 
@@ -164,6 +171,7 @@ export class AvatarRuntime {
         loop: this.motionController.loopEnabled,
         speed: this.motionController.playbackSpeed,
         autoBlink: this.expressionController.autoBlink,
+        characterPosition: this.sceneController.currentCharacterPosition,
       });
     } catch (error) {
       if (requestId !== this.modelLoadRequestId) {
@@ -260,6 +268,22 @@ export class AvatarRuntime {
     this.publishMotion(`Motion ${verb}.`);
   }
 
+  private setCharacterPosition(position: { x: number; y: number }): void {
+    const next = this.sceneController.setCharacterPosition(position);
+    this.publish({
+      characterPosition: next,
+      message: `Character position set to ${next.x.toFixed(2)}, ${next.y.toFixed(2)}.`,
+    });
+  }
+
+  private moveCharacter(direction: 'up' | 'down' | 'left' | 'right', step: number): void {
+    const next = this.sceneController.moveCharacter(direction, step);
+    this.publish({
+      characterPosition: next,
+      message: `Character moved ${direction} to ${next.x.toFixed(2)}, ${next.y.toFixed(2)}.`,
+    });
+  }
+
   private publishMotion(message: string): void {
     const controller = this.motionController;
     this.publish({
@@ -318,5 +342,5 @@ export class AvatarRuntime {
 }
 
 export function getInitialAvatarStatus(): AvatarStatus {
-  return { ...EMPTY_STATUS };
+  return { ...EMPTY_STATUS, characterPosition: { ...EMPTY_STATUS.characterPosition } };
 }

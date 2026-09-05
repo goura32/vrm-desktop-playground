@@ -7,10 +7,6 @@ import type { WindowStateSnapshot } from '../shared/windowState';
 const api: VrmDesktopApi = {
   getWindowState: () => ipcRenderer.invoke(IPC_CHANNELS.getWindowState),
   setAlwaysOnTop: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.setAlwaysOnTop, enabled),
-  setClickThrough: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.setClickThrough, enabled),
-  setInteractionMode: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.setInteractionMode, enabled),
-  setPosition: (x, y) => ipcRenderer.invoke(IPC_CHANNELS.setPosition, x, y),
-  moveBy: (direction, step) => ipcRenderer.invoke(IPC_CHANNELS.moveBy, direction, step),
   openVrmDialog: () => ipcRenderer.invoke(IPC_CHANNELS.openVrmDialog),
   openVrmaDialog: () => ipcRenderer.invoke(IPC_CHANNELS.openVrmaDialog),
   loadVrmFile: (file: FilePayload) => ipcRenderer.invoke(IPC_CHANNELS.loadVrmFile, file),

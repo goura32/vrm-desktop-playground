@@ -1,6 +1,7 @@
 import type {
   AvatarCommand,
   AvatarStatus,
+  CharacterPosition,
   ExpressionInfo,
   MotionInfo,
   VrmModelInfo,
@@ -10,6 +11,7 @@ import { isFilePayload, isLikelyAssetName } from './fileValidation';
 const CAPABILITY_NAMES = ['humanoid', 'presetExpressions', 'customExpressions', 'blink', 'lookAt', 'springBone', 'vrma'] as const;
 const AVATAR_PHASES = ['idle', 'loading', 'ready', 'error'] as const;
 const MOTION_PLAYBACKS = ['stopped', 'playing', 'paused'] as const;
+const MOVE_DIRECTIONS = ['up', 'down', 'left', 'right'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -25,6 +27,12 @@ function isFiniteNumber(value: unknown): value is number {
 
 function isBoolean(value: unknown): value is boolean {
   return typeof value === 'boolean';
+}
+
+function isCharacterPosition(value: unknown): value is CharacterPosition {
+  return isRecord(value) &&
+    isFiniteNumber(value.x) && value.x >= 0 && value.x <= 1 &&
+    isFiniteNumber(value.y) && value.y >= 0 && value.y <= 1;
 }
 
 function isExpressionInfo(value: unknown): value is ExpressionInfo {
@@ -95,6 +103,11 @@ export function isAvatarCommand(value: unknown): value is AvatarCommand {
       return true;
     case 'motion-set-speed':
       return isFiniteNumber(value.speed) && value.speed > 0 && value.speed <= 10;
+    case 'set-character-position':
+      return isCharacterPosition(value.position);
+    case 'move-character':
+      return typeof value.direction === 'string' && MOVE_DIRECTIONS.includes(value.direction as (typeof MOVE_DIRECTIONS)[number]) &&
+        isFiniteNumber(value.step) && value.step > 0 && value.step <= 1;
     default:
       return false;
   }
@@ -115,6 +128,7 @@ export function isAvatarStatus(value: unknown): value is AvatarStatus {
     isFiniteNumber(value.speed) && value.speed >= 0.1 && value.speed <= 2 &&
     isBoolean(value.autoBlink) &&
     isBoolean(value.manualBlink) &&
-    isBoolean(value.lookAt)
+    isBoolean(value.lookAt) &&
+    isCharacterPosition(value.characterPosition)
   );
 }

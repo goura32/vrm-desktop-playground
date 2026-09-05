@@ -10,12 +10,7 @@ import { isAvatarCommand, isAvatarStatus } from '../shared/ipcValidation';
 import type { AvatarCommand, AvatarStatus, FilePayload } from '../shared/types';
 import type { BundledAssetId } from '../shared/bundledAssets';
 import type { WindowStateSnapshot } from '../shared/windowState';
-import {
-  createInitialWindowState,
-  isMoveDirection,
-  movePosition,
-  resolveEffectiveClickThrough,
-} from '../shared/windowState';
+import { createInitialWindowState } from '../shared/windowState';
 import { getElectronPlatformSwitches } from './platform/linux';
 
 const DEV_SERVER_URL = 'http://127.0.0.1:5173';
@@ -42,6 +37,7 @@ function createInitialAvatarStatus(): AvatarStatus {
     autoBlink: true,
     manualBlink: false,
     lookAt: true,
+    characterPosition: { x: 0.5, y: 0.5 },
   };
 }
 
@@ -114,17 +110,33 @@ function isBoolean(value: unknown): value is boolean {
 }
 
 
-function setAvatarClickThrough(): void {
+function enforceAvatarOverlayPolicy(): void {
   if (!avatarWindow || avatarWindow.isDestroyed()) {
     return;
   }
 
-  const effective = resolveEffectiveClickThrough(
-    windowState.clickThrough,
-    windowState.interactionMode,
-  );
-  avatarWindow.setIgnoreMouseEvents(effective, { forward: true });
-  windowState = { ...windowState, effectiveClickThrough: effective };
+  avatarWindow.setAlwaysOnTop(windowState.alwaysOnTop);
+  avatarWindow.setIgnoreMouseEvents(true, { forward: true });
+}
+
+function applyPrimaryDisplayBounds(): void {
+  if (!avatarWindow || avatarWindow.isDestroyed()) {
+    return;
+  }
+
+  const bounds = screen.getPrimaryDisplay().bounds;
+  avatarWindow.setBounds(bounds);
+  windowState = {
+    ...windowState,
+    avatar: {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+    },
+  };
+  enforceAvatarOverlayPolicy();
+  broadcastWindowState();
 }
 
 function currentWindowState(): WindowStateSnapshot {
@@ -277,62 +289,7 @@ function registerIpcHandlers(): void {
     avatarWindow?.setAlwaysOnTop(windowState.alwaysOnTop);
     return broadcastWindowState();
   });
-  ipcMain.handle(IPC_CHANNELS.setClickThrough, (event: IpcMainInvokeEvent, enabled: unknown) => {
-    if (!isDebugSender(event)) {
-      rejectIpcSender(IPC_CHANNELS.setClickThrough);
-      return currentWindowState();
-    }
-    if (!isBoolean(enabled)) {
-      log('rejected malformed click-through value from renderer');
-      return currentWindowState();
-    }
-    windowState = { ...windowState, clickThrough: enabled };
-    setAvatarClickThrough();
-    return broadcastWindowState();
-  });
-  ipcMain.handle(IPC_CHANNELS.setInteractionMode, (event: IpcMainInvokeEvent, enabled: unknown) => {
-    if (!isDebugSender(event)) {
-      rejectIpcSender(IPC_CHANNELS.setInteractionMode);
-      return currentWindowState();
-    }
-    if (!isBoolean(enabled)) {
-      log('rejected malformed interaction-mode value from renderer');
-      return currentWindowState();
-    }
-    windowState = { ...windowState, interactionMode: enabled };
-    setAvatarClickThrough();
-    return broadcastWindowState();
-  });
-  ipcMain.handle(
-    IPC_CHANNELS.setPosition,
-    (event: IpcMainInvokeEvent, x: number, y: number) => {
-      if (!isDebugSender(event)) {
-        rejectIpcSender(IPC_CHANNELS.setPosition);
-        return currentWindowState();
-      }
-      if (Number.isFinite(x) && Number.isFinite(y)) {
-        avatarWindow?.setPosition(Math.round(x), Math.round(y));
-      }
-      return broadcastWindowState();
-    },
-  );
-  ipcMain.handle(
-    IPC_CHANNELS.moveBy,
-    (event: IpcMainInvokeEvent, direction: 'up' | 'down' | 'left' | 'right', step: number) => {
-      if (!isDebugSender(event)) {
-        rejectIpcSender(IPC_CHANNELS.moveBy);
-        return currentWindowState();
-      }
-      if (!isMoveDirection(direction)) {
-        return broadcastWindowState();
-      }
-      const current = currentWindowState().avatar;
-      const position = movePosition(current, direction, step);
-      windowState = { ...windowState, moveStep: Number.isFinite(step) && step > 0 ? step : 10 };
-      avatarWindow?.setPosition(Math.round(position.x), Math.round(position.y));
-      return broadcastWindowState();
-    },
-  );
+
   ipcMain.handle(IPC_CHANNELS.openVrmDialog, (event: IpcMainInvokeEvent) => {
     if (!isDebugSender(event)) {
       rejectIpcSender(IPC_CHANNELS.openVrmDialog);
@@ -419,15 +376,16 @@ function createWindows(): void {
   const display = screen.getPrimaryDisplay();
   const workArea = display.workArea;
   if (!windowLayoutInitialized) {
-    const initialX = Math.max(workArea.x + 20, workArea.x + workArea.width - 660);
-    const initialY = workArea.y + 40;
     windowState = {
       ...windowState,
-      avatar: { ...windowState.avatar, x: initialX, y: initialY },
-      debug: { ...windowState.debug, x: workArea.x + 20, y: initialY },
+      debug: { ...windowState.debug, x: workArea.x + 20, y: workArea.y + 40 },
     };
     windowLayoutInitialized = true;
   }
+  windowState = {
+    ...windowState,
+    avatar: { ...display.bounds },
+  };
 
   const preload = path.join(__dirname, 'preload.cjs');
   const webPreferences = {
@@ -438,13 +396,16 @@ function createWindows(): void {
   };
 
   avatarWindow = new BrowserWindow({
-    x: windowState.avatar.x,
-    y: windowState.avatar.y,
-    width: windowState.avatar.width,
-    height: windowState.avatar.height,
+    x: display.bounds.x,
+    y: display.bounds.y,
+    width: display.bounds.width,
+    height: display.bounds.height,
     transparent: true,
     frame: false,
     alwaysOnTop: windowState.alwaysOnTop,
+    resizable: false,
+    movable: false,
+    fullscreenable: false,
     show: false,
     backgroundColor: '#00000000',
     webPreferences,
@@ -452,12 +413,10 @@ function createWindows(): void {
   protectWebContents(avatarWindow);
   avatarWindow.setAlwaysOnTop(windowState.alwaysOnTop);
   avatarWindow.setSkipTaskbar(true);
-  avatarWindow.on('move', () => broadcastWindowState());
-  avatarWindow.on('resize', () => broadcastWindowState());
   avatarWindow.on('closed', () => { avatarWindow = null; });
   avatarWindow.webContents.on('did-finish-load', () => {
     avatarWindow?.showInactive();
-    setAvatarClickThrough();
+    enforceAvatarOverlayPolicy();
   });
 
   debugWindow = new BrowserWindow({
@@ -487,7 +446,7 @@ function createWindows(): void {
 
   loadRenderer(avatarWindow, 'avatar.html');
   loadRenderer(debugWindow, 'index.html');
-  setAvatarClickThrough();
+  enforceAvatarOverlayPolicy();
 }
 
 if (process.platform === 'linux') {
@@ -500,6 +459,9 @@ if (process.platform === 'linux') {
 app.whenReady().then(() => {
   log(`Electron ready on ${process.platform}; Linux uses --ozone-platform=x11.`);
   registerIpcHandlers();
+  screen.on('display-metrics-changed', () => applyPrimaryDisplayBounds());
+  screen.on('display-added', () => applyPrimaryDisplayBounds());
+  screen.on('display-removed', () => applyPrimaryDisplayBounds());
   createWindows();
   app.on('activate', () => {
     if (debugWindow === null) {

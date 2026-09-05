@@ -263,19 +263,19 @@ h2 {
   margin-top: 12px;
 }
 
-.move-grid #move-up {
+.move-grid #move-character-up {
   grid-area: up;
 }
 
-.move-grid #move-down {
+.move-grid #move-character-down {
   grid-area: down;
 }
 
-.move-grid #move-left {
+.move-grid #move-character-left {
   grid-area: left;
 }
 
-.move-grid #move-right {
+.move-grid #move-character-right {
   grid-area: right;
 }
 

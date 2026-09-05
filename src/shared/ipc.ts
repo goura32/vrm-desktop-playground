@@ -4,10 +4,6 @@ import type { WindowStateSnapshot } from './windowState';
 export const IPC_CHANNELS = {
   getWindowState: 'window:get-state',
   setAlwaysOnTop: 'window:set-always-on-top',
-  setClickThrough: 'window:set-click-through',
-  setInteractionMode: 'window:set-interaction-mode',
-  setPosition: 'window:set-position',
-  moveBy: 'window:move-by',
   openVrmDialog: 'dialog:open-vrm',
   openVrmaDialog: 'dialog:open-vrma',
   loadVrmFile: 'file:load-vrm',

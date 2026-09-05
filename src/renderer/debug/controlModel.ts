@@ -1,15 +1,16 @@
+import { DEFAULT_CHARACTER_MOVE_STEP } from '../../shared/scenePosition';
+import type { CharacterMoveDirection } from '../../shared/types';
+
 export const DEBUG_FOCUSABLE_CONTROL_ORDER = [
   'always-on-top',
-  'click-through',
-  'interaction-mode',
-  'position-x',
-  'position-y',
-  'move-step',
-  'set-position',
-  'move-up',
-  'move-down',
-  'move-left',
-  'move-right',
+  'character-position-x',
+  'character-position-y',
+  'character-move-step',
+  'set-character-position',
+  'move-character-up',
+  'move-character-down',
+  'move-character-left',
+  'move-character-right',
   'open-vrm',
   'open-vrma',
 ] as const;
@@ -20,14 +21,28 @@ export function getFocusableControlOrder(): string[] {
 
 export function normalizeMoveStep(value: string): number {
   const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 1 ? parsed : DEFAULT_CHARACTER_MOVE_STEP;
 }
 
-export function parseCoordinate(value: string): number | null {
+export function parseNormalizedCoordinate(value: string): number | null {
   if (value.trim() === '') {
     return null;
   }
 
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : null;
+}
+
+export function directionForKey(key: string, code = key): CharacterMoveDirection | null {
+  const directions: Record<string, CharacterMoveDirection> = {
+    arrowup: 'up',
+    up: 'up',
+    arrowdown: 'down',
+    down: 'down',
+    arrowleft: 'left',
+    left: 'left',
+    arrowright: 'right',
+    right: 'right',
+  };
+  return directions[key.toLowerCase()] ?? directions[code.toLowerCase()] ?? null;
 }

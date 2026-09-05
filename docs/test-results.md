@@ -1,6 +1,6 @@
 # 最終検証記録
 
-実施日時: 2026-09-05 19:01 JST
+実施日時: 2026-09-05 20:49 JST
 対象: Ubuntu 26.04 / GNOME Wayland / Xwayland (`DISPLAY=:0`)
 Node.js: v22.23.2
 Electron: 44.2.0
@@ -12,7 +12,7 @@ Electron: 44.2.0
 | `npm ci --ignore-scripts` | PASS | lockfile から 333 packages を再構築、監査 0 vulnerabilities |
 | `npm run lint` | PASS | ESLint エラーなし |
 | `npm run typecheck` | PASS | TypeScript エラーなし |
-| `npm test` | PASS | 11 test files / 27 tests passed |
+| `npm test` | PASS | 12 test files / 29 tests passed |
 | `npm run build` | PASS | Vite renderer と Electron main/preload bundle を生成 |
 | `npm audit --audit-level=high` | PASS | 0 vulnerabilities |
 
@@ -24,22 +24,25 @@ Build では Three.js renderer chunk が 500 kB を超えるという Vite の�
 
 ## 実アプリ確認
 
-`npm start` の実行ログで次を確認しました。
+`npm start` の実行ログとComputer Useの画面確認で次を確認しました。
 
 - Linux 起動引数は `--ozone-platform=x11 --no-sandbox`。
 - Debug Window と Avatar Window が別ウィンドウで起動。
 - `VRM1_Constraint_Twist_Sample.vrm` の VRM 1.0 load が `ready`。
 - `test.vrma` の load が `ready`、1 motion を認識。
-- Avatar は 600 x 800、Debug は 420 x 720。
-- Avatar の X11 window は depth 32 / TrueColor / viewable、`_NET_WM_STATE_ABOVE`。
-- Computer Use の画面確認で、透明 Avatar viewport のモデル表示、Debug の `ready` 表示、Window probe、VRM/VRMA controls、expression controls、LookAt/Spring Bone/VRMA capability 表示を確認。
-- Computer Use の keyboard-only 検証で Tab / Space によるチェックボックス操作、PageDown / Ctrl+End による Debug UI の移動、位置入力と Set position を確認。マウスクリック・ドラッグには依存していません。
+- Primary Display bounds は `67, 29 · 2493 × 1411`。
+- Avatar Window bounds は Primary Displayと同じ `67, 29 · 2493 × 1411`。Debug Windowは `420 × 720`。
+- AvatarのX11 windowはdepth 32 / TrueColor / viewableで、`_NET_WM_STATE_ABOVE`を確認。
+- Avatar Windowはtransparent、frameless、non-movable、non-resizable、描画専用overlayとして構成。
+- Computer Useの画面確認で、全身が収まった透明Avatar viewport、Debugの`ready`、Primary Display bounds、Always on Top、scene-space位置入力、VRM/VRMA controls、expression controls、LookAt/Spring Bone/VRMA capability表示を確認。
+- キャラクター位置は正規化screen-spaceの初期値`0.50, 0.50`。Debug UIにはX/Y入力、Set character position、矢印ボタン、Arrow key経路がある。
+- Computer Useの同一Electronアプリ内target選択がfullscreen Avatar Windowを優先し、Debugへの物理キーボード入力は確認できなかった。UIのキーボード経路は自動テストとコードレビューで確認し、実画面の位置変更はmanual verification requiredとして記録する。
 
 ## Click Through の検証状態
 
-`Click Through` と `Interaction Mode` の組み合わせから effective state を求め、`BrowserWindow.setIgnoreMouseEvents(effective, { forward: true })` に渡す実装と、状態遷移の自動テストは PASS です。
+Avatar Windowは常時 `BrowserWindow.setIgnoreMouseEvents(true, { forward: true })` を適用し、Click Through / Interaction Mode切り替えIPCとUIを廃止しています。常時Click Throughの実装・構成テストはPASSです。
 
-OS 上で背面 X11 window に click が届くことの自動確認は BLOCKED です。このセッションは Wayland 上の Xwayland で、`xdotool` と XTEST 拡張は存在するものの、`xev` に対する `xdotool click` が `ButtonPress` を生成しませんでした。`xinput` / `ydotool` / `wtype` も利用できないため、Computer Use のマウス操作で代替せず、実装済み・自動確認 BLOCKED と記録します。Click Through の実機クリック確認だけが残る環境依存項目です。
+OS 上で背面 X11 window に click が届くことの自動確認は BLOCKEDです。このセッションはWayland上のXwaylandで、`xdotool`とXTEST拡張は存在するものの、`xev`に対する`xdotool click`が`ButtonPress`を生成しませんでした。`xinput` / `ydotool` / `wtype`も利用できないため、Computer Useのマウス操作で代替せず、実装済み・manual verification requiredとして記録します。
 
 ## 自己レビュー結果
 
@@ -49,6 +52,9 @@ OS 上で背面 X11 window に click が届くことの自動確認は BLOCKED �
 - ローカルファイルは basename、拡張子、ArrayBuffer、250 MiB 上限を検証。読み込み前に stat でサイズを確認。
 - IPC の command / status を runtime shape guard と `event.sender` 検証で保護。移動方向などの不正値を拒否。
 - navigation / redirect はアプリ内ページまたはローカルVite originに限定し、`window.open` は拒否。両HTML entry pointにCSPを設定。
+- Avatar WindowはPrimary Displayの`bounds`を使用し、`display-metrics-changed` / `display-added` / `display-removed`でboundsを再適用。
+- キャラクター位置はBrowserWindowのX/Yではなく、`SceneController`の正規化screen-spaceとして保持し、Three.js camera projectionでVRM scene rootを移動。
+- Debugのposition controlsは既存のwindow movement IPCを使わず、validated avatar commandとしてAvatar rendererへルーティング。
 - VRMとVRMAの非同期ロード世代を分離し、モデル差し替え中の古いmotion適用を拒否。差し替え後はbundled VRMA要求をモデル単位で再試行。
 - npm lifecycleの`predev` / `prestart`でElectron main/preload bundleを生成し、clean checkoutの起動経路を確保。
 - VRM 差し替え時の animation source snapshot と mixer resource cleanup、expression reset 後の model status 更新を確認。

@@ -37,6 +37,13 @@ export interface MotionInfo {
 export type AvatarPhase = 'idle' | 'loading' | 'ready' | 'error';
 export type MotionPlayback = 'stopped' | 'playing' | 'paused';
 
+export interface CharacterPosition {
+  x: number;
+  y: number;
+}
+
+export type CharacterMoveDirection = 'up' | 'down' | 'left' | 'right';
+
 export interface AvatarStatus {
   phase: AvatarPhase;
   message: string;
@@ -49,6 +56,7 @@ export interface AvatarStatus {
   autoBlink: boolean;
   manualBlink: boolean;
   lookAt: boolean;
+  characterPosition: CharacterPosition;
 }
 
 export interface FilePayload {
@@ -69,15 +77,13 @@ export type AvatarCommand =
   | { type: 'motion-pause' }
   | { type: 'motion-stop' }
   | { type: 'motion-set-loop'; enabled: boolean }
-  | { type: 'motion-set-speed'; speed: number };
+  | { type: 'motion-set-speed'; speed: number }
+  | { type: 'set-character-position'; position: CharacterPosition }
+  | { type: 'move-character'; direction: CharacterMoveDirection; step: number };
 
 export interface VrmDesktopApi {
   getWindowState(): Promise<WindowStateSnapshot>;
   setAlwaysOnTop(enabled: boolean): Promise<WindowStateSnapshot>;
-  setClickThrough(enabled: boolean): Promise<WindowStateSnapshot>;
-  setInteractionMode(enabled: boolean): Promise<WindowStateSnapshot>;
-  setPosition(x: number, y: number): Promise<WindowStateSnapshot>;
-  moveBy(direction: 'up' | 'down' | 'left' | 'right', step: number): Promise<WindowStateSnapshot>;
   openVrmDialog(): Promise<boolean>;
   openVrmaDialog(): Promise<boolean>;
   loadVrmFile(file: FilePayload): Promise<boolean>;

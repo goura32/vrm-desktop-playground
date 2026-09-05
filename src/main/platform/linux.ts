@@ -1,5 +1,3 @@
-import type { WindowStateSnapshot } from '../../shared/windowState';
-
 export function getElectronPlatformSwitches(platform: NodeJS.Platform): string[] {
   return platform === 'linux' ? ['--ozone-platform=x11'] : [];
 }
@@ -21,8 +19,6 @@ export function describeElectronBackend(
   return 'platform default';
 }
 
-export function platformStateNote(state: WindowStateSnapshot): string {
-  return state.effectiveClickThrough
-    ? 'Click Through is active at the OS window level.'
-    : 'Avatar accepts pointer input while Interaction Mode is active.';
+export function platformStateNote(): string {
+  return 'Avatar follows Primary Display bounds and is always Click Through.';
 }

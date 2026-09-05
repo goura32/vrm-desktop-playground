@@ -15,7 +15,8 @@ Linux の `start` は `--ozone-platform=x11 --no-sandbox` を付けます。Ubun
 
 - Debug Window の標準 HTML コントロールは Tab / Shift+Tab で移動し、Enter / Space で操作できます。
 - `Open VRM` / `Open VRMA` でローカルファイルを選択できます。公開サンプルは `Load constraint sample`、`Load Seed-san`、`Load bundled VRMA` から読み込めます。
-- `Click Through` は OS レベルで Avatar のポインター入力を無視します。`Interaction Mode` が ON の間は安全のため一時的に入力を受け付けます。
+- Avatar Window は Primary Display 全体を覆う透明オーバーレイで、常時 Click Through です。Click Through / Interaction Mode の切り替えUIや、Avatar Window自体の移動UIはありません。
+- キャラクター位置は正規化 screen-space（左上が`0,0`、右下が`1,1`）で管理し、Debug Window の X/Y入力と矢印ボタンから変更できます。これはBrowserWindowの位置ではなく、Three.js/VRM sceneの位置です。
 - VRM を差し替えると、モデル情報・Preset/Custom Expression・Humanoid・LookAt/Spring Bone/VRMA capability が更新されます。
 
 ## アセットとライセンス
@@ -31,7 +32,7 @@ npm test
 npm run build
 ```
 
-自動テストと実アプリ起動を組み合わせます。Computer Use は画面キャプチャ、ウィンドウ認識、キーボード操作、目視確認だけに使い、マウスクリック・ドラッグには依存しません。Click Through の OS 動作は Computer Use クリックではなく X11 CLI 補助で検証します。
+自動テストと実アプリ起動を組み合わせます。Computer Use は画面キャプチャ、ウィンドウ認識、キーボード操作、目視確認だけに使い、マウスクリック・ドラッグには依存しません。Click Through の背面受信確認は環境依存のため、OS自動確認ができない場合はmanual verification requiredとして記録します。
 
 native Wayland は今回の受入対象外です。リップシンク、LLM/TTS/STT、複数キャラクター、インストーラー、自動アップデート、クラウド同期も対象外です。`--no-sandbox` はこの PoC の Ubuntu 実行環境で Electron の setuid sandbox helper を利用できないための開発用起動条件であり、本番配布向け設定ではありません。
 
