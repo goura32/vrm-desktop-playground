@@ -1,0 +1,24 @@
+import type { AvatarCommand, AvatarStatus, FilePayload } from './types';
+import type { WindowStateSnapshot } from './windowState';
+
+export const IPC_CHANNELS = {
+  getWindowState: 'window:get-state',
+  setAlwaysOnTop: 'window:set-always-on-top',
+  setClickThrough: 'window:set-click-through',
+  setInteractionMode: 'window:set-interaction-mode',
+  setPosition: 'window:set-position',
+  moveBy: 'window:move-by',
+  openVrmDialog: 'dialog:open-vrm',
+  openVrmaDialog: 'dialog:open-vrma',
+  loadVrmFile: 'file:load-vrm',
+  loadVrmaFile: 'file:load-vrma',
+  loadBundledAsset: 'file:load-bundled-asset',
+  sendAvatarCommand: 'avatar:command',
+  avatarStatus: 'avatar:status',
+  windowState: 'window:state',
+} as const;
+
+export type WindowStateListener = (state: WindowStateSnapshot) => void;
+export type AvatarStatusListener = (status: AvatarStatus) => void;
+export type FileLoader = (file: FilePayload) => Promise<boolean>;
+export type AvatarCommandSender = (command: AvatarCommand) => void;

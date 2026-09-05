@@ -1,0 +1,515 @@
+import { app, BrowserWindow, dialog, ipcMain, screen } from 'electron';
+import type { IpcMainEvent, IpcMainInvokeEvent, OpenDialogOptions } from 'electron';
+import { access, readFile, stat } from 'node:fs/promises';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { BUNDLED_ASSETS, getBundledAsset, isBundledAssetId } from '../shared/bundledAssets';
+import { isFilePayload, isLikelyAssetName, MAX_FILE_BYTES } from '../shared/fileValidation';
+import { IPC_CHANNELS } from '../shared/ipc';
+import { isAvatarCommand, isAvatarStatus } from '../shared/ipcValidation';
+import type { AvatarCommand, AvatarStatus, FilePayload } from '../shared/types';
+import type { BundledAssetId } from '../shared/bundledAssets';
+import type { WindowStateSnapshot } from '../shared/windowState';
+import {
+  createInitialWindowState,
+  isMoveDirection,
+  movePosition,
+  resolveEffectiveClickThrough,
+} from '../shared/windowState';
+import { getElectronPlatformSwitches } from './platform/linux';
+
+const DEV_SERVER_URL = 'http://127.0.0.1:5173';
+let avatarWindow: BrowserWindow | null = null;
+let debugWindow: BrowserWindow | null = null;
+let windowState = createInitialWindowState();
+let lastAvatarStatus = createInitialAvatarStatus();
+let windowLayoutInitialized = false;
+
+function log(message: string): void {
+  console.info(`[vrm-desktop-playground] ${message}`);
+}
+
+function createInitialAvatarStatus(): AvatarStatus {
+  return {
+    phase: 'idle',
+    message: 'Avatar window ready. Loading the bundled VRM sample…',
+    model: null,
+    motions: [],
+    activeMotionId: null,
+    playback: 'stopped',
+    loop: true,
+    speed: 1,
+    autoBlink: true,
+    manualBlink: false,
+    lookAt: true,
+  };
+}
+
+function isDevMode(): boolean {
+  return process.argv.includes('--dev');
+}
+
+function isAllowedRendererUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (isDevMode()) {
+      return parsed.protocol === 'http:' && parsed.hostname === '127.0.0.1' && parsed.port === '5173' &&
+        (parsed.pathname === '/index.html' || parsed.pathname === '/avatar.html');
+    }
+
+    const distRoot = pathToFileURL(`${path.join(app.getAppPath(), 'dist')}${path.sep}`).href;
+    return parsed.protocol === 'file:' && url.startsWith(distRoot);
+  } catch {
+    return false;
+  }
+}
+
+function protectWebContents(browserWindow: BrowserWindow): void {
+  browserWindow.webContents.on('will-navigate', (event, url) => {
+    if (!isAllowedRendererUrl(url)) {
+      event.preventDefault();
+      log(`blocked renderer navigation: ${url}`);
+    }
+  });
+  browserWindow.webContents.on('will-redirect', (event, url) => {
+    if (!isAllowedRendererUrl(url)) {
+      event.preventDefault();
+      log(`blocked renderer redirect: ${url}`);
+    }
+  });
+  browserWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+}
+
+function toArrayBuffer(buffer: Buffer): ArrayBuffer {
+  const copy = new Uint8Array(buffer.byteLength);
+  copy.set(buffer);
+  return copy.buffer;
+}
+
+function isSender(event: IpcMainEvent | IpcMainInvokeEvent, browserWindow: BrowserWindow | null): boolean {
+  return Boolean(
+    browserWindow &&
+    !browserWindow.isDestroyed() &&
+    event.sender === browserWindow.webContents &&
+    event.senderFrame &&
+    event.senderFrame === event.sender.mainFrame &&
+    isAllowedRendererUrl(event.senderFrame.url),
+  );
+}
+
+function isDebugSender(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  return isSender(event, debugWindow);
+}
+
+function isAvatarSender(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  return isSender(event, avatarWindow);
+}
+
+function rejectIpcSender(channel: string): void {
+  log(`rejected IPC sender for ${channel}`);
+}
+
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === 'boolean';
+}
+
+
+function setAvatarClickThrough(): void {
+  if (!avatarWindow || avatarWindow.isDestroyed()) {
+    return;
+  }
+
+  const effective = resolveEffectiveClickThrough(
+    windowState.clickThrough,
+    windowState.interactionMode,
+  );
+  avatarWindow.setIgnoreMouseEvents(effective, { forward: true });
+  windowState = { ...windowState, effectiveClickThrough: effective };
+}
+
+function currentWindowState(): WindowStateSnapshot {
+  const avatarBounds = avatarWindow && !avatarWindow.isDestroyed()
+    ? avatarWindow.getBounds()
+    : windowState.avatar;
+  const debugBounds = debugWindow && !debugWindow.isDestroyed()
+    ? debugWindow.getBounds()
+    : windowState.debug;
+
+  return {
+    ...windowState,
+    avatar: {
+      x: avatarBounds.x,
+      y: avatarBounds.y,
+      width: avatarBounds.width,
+      height: avatarBounds.height,
+    },
+    debug: {
+      x: debugBounds.x,
+      y: debugBounds.y,
+      width: debugBounds.width,
+      height: debugBounds.height,
+    },
+    alwaysOnTop: windowState.alwaysOnTop,
+  };
+}
+
+function broadcastWindowState(): WindowStateSnapshot {
+  windowState = currentWindowState();
+  if (debugWindow && !debugWindow.isDestroyed()) {
+    debugWindow.webContents.send(IPC_CHANNELS.windowState, windowState);
+  }
+  return windowState;
+}
+
+function broadcastAvatarStatus(status: AvatarStatus): void {
+  lastAvatarStatus = status;
+  log(`avatar status: ${status.phase} — ${status.message}`);
+  if (debugWindow && !debugWindow.isDestroyed()) {
+    debugWindow.webContents.send(IPC_CHANNELS.avatarStatus, status);
+  }
+}
+
+function sendAvatarCommand(command: AvatarCommand): void {
+  log(`route avatar command: ${command.type}`);
+  if (avatarWindow && !avatarWindow.isDestroyed()) {
+    avatarWindow.webContents.send(IPC_CHANNELS.sendAvatarCommand, command);
+  }
+}
+
+async function readBundledAsset(assetId: BundledAssetId): Promise<FilePayload> {
+  const descriptor = getBundledAsset(assetId);
+  const relativePath = path.normalize(descriptor.relativePath);
+  const candidatePaths = [
+    path.join(app.getAppPath(), 'assets', relativePath),
+    path.join(app.getAppPath(), 'dist', relativePath),
+    path.join(__dirname, '..', 'assets', relativePath),
+  ];
+
+  for (const candidate of candidatePaths) {
+    try {
+      await access(candidate);
+      const data = await readFile(candidate);
+      return { name: path.basename(candidate), data: toArrayBuffer(data) };
+    } catch {
+      // Try the next known, application-owned location.
+    }
+  }
+
+  throw new Error(`Bundled asset “${descriptor.displayName}” is not available.`);
+}
+
+async function routeFile(kind: 'vrm' | 'vrma', file: FilePayload): Promise<boolean> {
+  if (!isFilePayload(file) || !isLikelyAssetName(file.name, kind)) {
+    broadcastAvatarStatus({
+      ...lastAvatarStatus,
+      phase: 'error',
+      message: `Rejected ${kind.toUpperCase()} file: expected a safe .${kind} filename and a valid, bounded payload.`,
+    });
+    return false;
+  }
+
+  sendAvatarCommand({ type: kind === 'vrm' ? 'load-vrm' : 'load-vrma', file });
+  return true;
+}
+
+async function chooseAndRouteFile(kind: 'vrm' | 'vrma'): Promise<boolean> {
+  const owner = debugWindow && !debugWindow.isDestroyed() ? debugWindow : undefined;
+  const options: OpenDialogOptions = {
+    title: kind === 'vrm' ? 'Open VRM 1.0 model' : 'Open VRMA motion',
+    properties: ['openFile'],
+    filters: [{ name: kind === 'vrm' ? 'VRM model' : 'VRMA motion', extensions: [kind] }],
+  };
+  const result = owner
+    ? await dialog.showOpenDialog(owner, options)
+    : await dialog.showOpenDialog(options);
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return false;
+  }
+
+  try {
+    const filePath = result.filePaths[0];
+    const name = path.basename(filePath);
+    if (!isLikelyAssetName(name, kind)) {
+      broadcastAvatarStatus({
+        ...lastAvatarStatus,
+        phase: 'error',
+        message: `Rejected file: select a .${kind} asset.`,
+      });
+      return false;
+    }
+    const fileStats = await stat(filePath);
+    if (fileStats.size > MAX_FILE_BYTES) {
+      broadcastAvatarStatus({
+        ...lastAvatarStatus,
+        phase: 'error',
+        message: `Rejected file: assets larger than ${MAX_FILE_BYTES / (1024 * 1024)} MiB are not accepted.`,
+      });
+      return false;
+    }
+    const data = await readFile(filePath);
+    return routeFile(kind, { name, data: toArrayBuffer(data) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    broadcastAvatarStatus({ ...lastAvatarStatus, phase: 'error', message: `Could not read file: ${message}` });
+    return false;
+  }
+}
+
+function registerIpcHandlers(): void {
+  ipcMain.handle(IPC_CHANNELS.getWindowState, (event: IpcMainInvokeEvent) => {
+    if (!isDebugSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.getWindowState);
+      return currentWindowState();
+    }
+    return broadcastWindowState();
+  });
+  ipcMain.handle(IPC_CHANNELS.setAlwaysOnTop, (event: IpcMainInvokeEvent, enabled: unknown) => {
+    if (!isDebugSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.setAlwaysOnTop);
+      return currentWindowState();
+    }
+    if (!isBoolean(enabled)) {
+      log('rejected malformed always-on-top value from renderer');
+      return currentWindowState();
+    }
+    windowState = { ...windowState, alwaysOnTop: enabled };
+    avatarWindow?.setAlwaysOnTop(windowState.alwaysOnTop);
+    return broadcastWindowState();
+  });
+  ipcMain.handle(IPC_CHANNELS.setClickThrough, (event: IpcMainInvokeEvent, enabled: unknown) => {
+    if (!isDebugSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.setClickThrough);
+      return currentWindowState();
+    }
+    if (!isBoolean(enabled)) {
+      log('rejected malformed click-through value from renderer');
+      return currentWindowState();
+    }
+    windowState = { ...windowState, clickThrough: enabled };
+    setAvatarClickThrough();
+    return broadcastWindowState();
+  });
+  ipcMain.handle(IPC_CHANNELS.setInteractionMode, (event: IpcMainInvokeEvent, enabled: unknown) => {
+    if (!isDebugSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.setInteractionMode);
+      return currentWindowState();
+    }
+    if (!isBoolean(enabled)) {
+      log('rejected malformed interaction-mode value from renderer');
+      return currentWindowState();
+    }
+    windowState = { ...windowState, interactionMode: enabled };
+    setAvatarClickThrough();
+    return broadcastWindowState();
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.setPosition,
+    (event: IpcMainInvokeEvent, x: number, y: number) => {
+      if (!isDebugSender(event)) {
+        rejectIpcSender(IPC_CHANNELS.setPosition);
+        return currentWindowState();
+      }
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        avatarWindow?.setPosition(Math.round(x), Math.round(y));
+      }
+      return broadcastWindowState();
+    },
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.moveBy,
+    (event: IpcMainInvokeEvent, direction: 'up' | 'down' | 'left' | 'right', step: number) => {
+      if (!isDebugSender(event)) {
+        rejectIpcSender(IPC_CHANNELS.moveBy);
+        return currentWindowState();
+      }
+      if (!isMoveDirection(direction)) {
+        return broadcastWindowState();
+      }
+      const current = currentWindowState().avatar;
+      const position = movePosition(current, direction, step);
+      windowState = { ...windowState, moveStep: Number.isFinite(step) && step > 0 ? step : 10 };
+      avatarWindow?.setPosition(Math.round(position.x), Math.round(position.y));
+      return broadcastWindowState();
+    },
+  );
+  ipcMain.handle(IPC_CHANNELS.openVrmDialog, (event: IpcMainInvokeEvent) => {
+    if (!isDebugSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.openVrmDialog);
+      return false;
+    }
+    return chooseAndRouteFile('vrm');
+  });
+  ipcMain.handle(IPC_CHANNELS.openVrmaDialog, (event: IpcMainInvokeEvent) => {
+    if (!isDebugSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.openVrmaDialog);
+      return false;
+    }
+    return chooseAndRouteFile('vrma');
+  });
+  ipcMain.handle(IPC_CHANNELS.loadVrmFile, (event: IpcMainInvokeEvent, file: FilePayload) => {
+    if (!isDebugSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.loadVrmFile);
+      return false;
+    }
+    return routeFile('vrm', file);
+  });
+  ipcMain.handle(IPC_CHANNELS.loadVrmaFile, (event: IpcMainInvokeEvent, file: FilePayload) => {
+    if (!isDebugSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.loadVrmaFile);
+      return false;
+    }
+    return routeFile('vrma', file);
+  });
+  ipcMain.handle(IPC_CHANNELS.loadBundledAsset, async (event: IpcMainInvokeEvent, assetId: BundledAssetId) => {
+    if (!isDebugSender(event) && !isAvatarSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.loadBundledAsset);
+      return false;
+    }
+    if (!isBundledAssetId(assetId)) {
+      return false;
+    }
+
+    try {
+      const descriptor = BUNDLED_ASSETS[assetId];
+      return await routeFile(descriptor.kind, await readBundledAsset(assetId));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      broadcastAvatarStatus({ ...lastAvatarStatus, phase: 'error', message });
+      return false;
+    }
+  });
+  ipcMain.on(IPC_CHANNELS.sendAvatarCommand, (event: IpcMainEvent, command: unknown) => {
+    if (!isDebugSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.sendAvatarCommand);
+      return;
+    }
+    if (!isAvatarCommand(command)) {
+      log('rejected malformed avatar command from renderer');
+      return;
+    }
+    sendAvatarCommand(command);
+  });
+  ipcMain.on(IPC_CHANNELS.avatarStatus, (event: IpcMainEvent, status: unknown) => {
+    if (!isAvatarSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.avatarStatus);
+      return;
+    }
+    if (!isAvatarStatus(status)) {
+      log('rejected malformed avatar status from renderer');
+      return;
+    }
+    broadcastAvatarStatus(status);
+  });
+}
+
+function rendererPath(fileName: string): string {
+  return path.join(app.getAppPath(), 'dist', fileName);
+}
+
+function loadRenderer(window: BrowserWindow, fileName: string): void {
+  if (isDevMode()) {
+    void window.loadURL(`${DEV_SERVER_URL}/${fileName}`);
+  } else {
+    void window.loadFile(rendererPath(fileName));
+  }
+}
+
+function createWindows(): void {
+  const display = screen.getPrimaryDisplay();
+  const workArea = display.workArea;
+  if (!windowLayoutInitialized) {
+    const initialX = Math.max(workArea.x + 20, workArea.x + workArea.width - 660);
+    const initialY = workArea.y + 40;
+    windowState = {
+      ...windowState,
+      avatar: { ...windowState.avatar, x: initialX, y: initialY },
+      debug: { ...windowState.debug, x: workArea.x + 20, y: initialY },
+    };
+    windowLayoutInitialized = true;
+  }
+
+  const preload = path.join(__dirname, 'preload.cjs');
+  const webPreferences = {
+    preload,
+    contextIsolation: true,
+    nodeIntegration: false,
+    sandbox: true,
+  };
+
+  avatarWindow = new BrowserWindow({
+    x: windowState.avatar.x,
+    y: windowState.avatar.y,
+    width: windowState.avatar.width,
+    height: windowState.avatar.height,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: windowState.alwaysOnTop,
+    show: false,
+    backgroundColor: '#00000000',
+    webPreferences,
+  });
+  protectWebContents(avatarWindow);
+  avatarWindow.setAlwaysOnTop(windowState.alwaysOnTop);
+  avatarWindow.setSkipTaskbar(true);
+  avatarWindow.on('move', () => broadcastWindowState());
+  avatarWindow.on('resize', () => broadcastWindowState());
+  avatarWindow.on('closed', () => { avatarWindow = null; });
+  avatarWindow.webContents.on('did-finish-load', () => {
+    avatarWindow?.showInactive();
+    setAvatarClickThrough();
+  });
+
+  debugWindow = new BrowserWindow({
+    x: windowState.debug.x,
+    y: windowState.debug.y,
+    width: windowState.debug.width,
+    height: windowState.debug.height,
+    minWidth: 380,
+    minHeight: 600,
+    title: 'VRM Desktop Playground — Debug',
+    backgroundColor: '#111827',
+    webPreferences,
+  });
+  protectWebContents(debugWindow);
+  debugWindow.on('move', () => broadcastWindowState());
+  debugWindow.on('resize', () => broadcastWindowState());
+  debugWindow.on('closed', () => {
+    debugWindow = null;
+    if (avatarWindow && !avatarWindow.isDestroyed()) {
+      avatarWindow.close();
+    }
+  });
+  debugWindow.webContents.on('did-finish-load', () => {
+    broadcastWindowState();
+    broadcastAvatarStatus(lastAvatarStatus);
+  });
+
+  loadRenderer(avatarWindow, 'avatar.html');
+  loadRenderer(debugWindow, 'index.html');
+  setAvatarClickThrough();
+}
+
+if (process.platform === 'linux') {
+  for (const argument of getElectronPlatformSwitches(process.platform)) {
+    const [key, value] = argument.replace(/^--/, '').split('=');
+    app.commandLine.appendSwitch(key, value);
+  }
+}
+
+app.whenReady().then(() => {
+  log(`Electron ready on ${process.platform}; Linux uses --ozone-platform=x11.`);
+  registerIpcHandlers();
+  createWindows();
+  app.on('activate', () => {
+    if (debugWindow === null) {
+      createWindows();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});

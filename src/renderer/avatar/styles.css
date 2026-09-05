@@ -1,0 +1,101 @@
+html,
+body,
+#root {
+  background: transparent;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.avatar-root {
+  background: transparent;
+  color: #e0f2fe;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  user-select: none;
+  width: 100%;
+}
+
+.avatar-canvas {
+  display: block;
+  height: 100%;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 100%;
+}
+
+.avatar-loading {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.68);
+  border: 1px solid rgba(125, 211, 252, 0.75);
+  border-radius: 22px;
+  box-shadow: 0 16px 45px rgba(2, 6, 23, 0.35), 0 0 32px rgba(56, 189, 248, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  left: 50%;
+  max-width: 235px;
+  padding: 28px 24px 20px;
+  position: absolute;
+  text-align: center;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: max-content;
+}
+
+.avatar-loading-error {
+  border-color: rgba(248, 113, 113, 0.85);
+}
+
+.loading-orb {
+  align-items: center;
+  background: radial-gradient(circle at 35% 30%, #bae6fd, #0ea5e9 48%, #1e1b4b 100%);
+  border: 3px solid rgba(224, 242, 254, 0.9);
+  border-radius: 50%;
+  box-shadow: 0 0 26px rgba(56, 189, 248, 0.7);
+  display: flex;
+  height: 130px;
+  justify-content: center;
+  width: 130px;
+}
+
+.loading-orb span {
+  color: #082f49;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+}
+
+.avatar-loading p {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 10px 0 0;
+}
+
+.avatar-loading small {
+  color: #bae6fd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.avatar-hud {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  border-radius: 999px;
+  bottom: 12px;
+  color: rgba(224, 242, 254, 0.8);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  left: 50%;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  padding: 4px 9px;
+  position: absolute;
+  text-overflow: ellipsis;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}

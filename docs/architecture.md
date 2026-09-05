@@ -1,0 +1,43 @@
+# Architecture
+
+## Process and window split
+
+- `src/main/main.ts` is the Electron main process. It creates the two `BrowserWindow` instances, applies native window settings, owns file dialogs, validates file payload size, routes typed IPC, and logs avatar status/command routing.
+- `src/renderer/avatar/` is the only renderer that owns Three.js, VRM, VRMA, expression, LookAt, and animation runtime objects. `AvatarRuntime` reports serializable status back through the preload bridge.
+- `src/renderer/debug/` is a React control panel. It contains standard `button`, `input`, `select`, `checkbox`, and range controls so the principal path works with Tab, Shift+Tab, Enter, and Space. It never imports Three.js or VRM packages.
+- `src/shared/` contains the typed IPC contract, serializable status types, window-state rules, and the bundled-asset allowlist.
+
+## Electron security boundary
+
+Both windows use the same bundled preload with:
+
+- `contextIsolation: true`
+- `nodeIntegration: false`
+- `sandbox: true` at the BrowserWindow level
+- a narrow `contextBridge.exposeInMainWorld('vrmDesktop', api)` API
+
+The renderer does not access Node.js or Electron modules directly. User-selected files are transferred as bounded `ArrayBuffer` payloads to the avatar renderer; bundled files are resolved only from the fixed `BUNDLED_ASSETS` map.
+
+The main process applies runtime guards to renderer-supplied file payloads, avatar commands, avatar status, coordinates, and movement directions. IPC handlers also verify the expected `event.sender` (`Debug` for controls and `Avatar` for status), so TypeScript types are not the only protection at the boundary. Navigation and redirects are limited to the bundled `dist` pages or the local Vite origin, all `window.open` requests are denied, and both HTML entry points carry a restrictive CSP.
+
+## Linux window policy
+
+The Linux entry path always appends `--ozone-platform=x11`. On the target Ubuntu GNOME Wayland session this selects the Xwayland backend, which is the PoC's supported path for transparent, frameless, always-on-top windows. Native Wayland is intentionally not the acceptance target because transparent/frameless window behavior is platform- and compositor-dependent.
+
+The Avatar Window is approximately 600×800, transparent, frameless, always-on-top by default, and skipped from the taskbar. Click Through is implemented with Electron's `setIgnoreMouseEvents`; Interaction Mode temporarily disables effective click-through so the avatar can receive pointer input. Position and directional movement are handled by the main process.
+
+## VRM runtime
+
+`VrmLoader` registers `VRMLoaderPlugin` and `VRMAnimationLoaderPlugin` with `GLTFLoader`. `SceneController` owns the alpha WebGL renderer, camera, lights, resize observer, render loop, and model scene attachment. `AvatarRuntime` composes:
+
+- `ExpressionController`: preset/custom expression discovery, clamped weights, reset, mouth presets, manual blink, and auto blink.
+- `LookAtController`: a scene target driven by normalized pointer coordinates and VRM LookAt enable/disable state.
+- `MotionController`: VRMA-to-`AnimationClip` conversion via `createVRMAnimationClip`, AnimationMixer play/pause/stop, repeat/once loop, speed clamping, and motion switching.
+
+Missing optional VRM capabilities are represented as `unsupported` in the Debug Window rather than throwing. A failed VRM/VRMA load is converted to a status message and does not terminate the app. Stale asynchronous loads are discarded, and replaced VRM scenes are deep-disposed.
+
+## Asset and license boundary
+
+`assets/manifest.json` records source URL, download URL where applicable, author, license, redistribution decision, credit requirement, checksum, and blocked candidates. Only obtained, license-reviewed public samples are committed. VRoid Hub and BOOTH candidates that require current terms, login, consent, or purchase checks remain `BLOCKED_ASSET` with no file path or checksum.
+
+See [`../assets/README.md`](../assets/README.md) and [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
