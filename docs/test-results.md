@@ -5,7 +5,7 @@
 Node.js: v22.23.2
 Electron: 44.2.0
 
-## 自動検証
+## 07修正時の自動検証
 
 | コマンド | 結果 | 実測結果 |
 |---|---|---|
@@ -101,8 +101,8 @@ Build では Three.js renderer chunk が 500 kB を超えるという Vite の�
 
 ### 6. Git
 
-- Final commit: この評価修正を含むcommitを作成し、完了報告でIDを記録する。
-- git status: commit後にcleanを確認する。
+- Final commit: `ba841b55e8fd41b28505cdcf331fd3a986892feb`（07評価修正）。
+- git status: commit後にcleanを確認済み。
 
 ## Click Through の検証状態
 
@@ -208,5 +208,5 @@ The source URL, raw download URL, revision, SHA-256, redistribution decision, an
 ### 7. Git
 
 - Behavior implementation commit: `b03cc9d` (`[verified] feat: add desktop character behavior`).
-- Documentation follow-up commit: recorded in the final report after this report update.
-- git status: must be clean after the final documentation commit.
+- Documentation follow-up commit: `6ca0ee6a6a47added40fb414702eab735634d91f`。
+- git status: 最終documentation commit後にcleanを確認済み。

@@ -17,4 +17,8 @@ The versions below are the lockfile-resolved direct dependencies at the PoC comm
 
 Bundled VRM/VRMA sample files are tracked separately in [`assets/manifest.json`](assets/manifest.json), which records source URLs, checksums, license review, redistribution status, and credit requirements.
 
+The bundled VRM samples use the [VRM Public License 1.0](https://vrm.dev/licenses/1.0/), with the per-file license settings embedded in each VRM and summarized in the manifest. `Seed-san.vrm` requires the following credit: **Seed-san model by VirtualCast, Inc.; (c) VirtualCast, Inc.** The pixiv sample models record credit as unnecessary in their embedded VRM metadata.
+
+`assets/vrma/test.vrma` is an MIT-licensed sample from `pixiv/three-vrm-animation`; credit **pixiv/three-vrm contributors** when redistributing it. The bundled TK256 motions and their required attribution are listed below.
+
 The committed `Relax.vrma`, `Goodbye.vrma`, and `Jump.vrma` files are from [tk256ailab/vrm-viewer](https://github.com/tk256ailab/vrm-viewer), revision `0cd2267f36939da589afc8eac449b5b9ccce4c01`. The repository is MIT-licensed; credit TK256 and the source repository when redistributing these motion files. See the per-file SHA-256 and license evidence in `assets/manifest.json`.
