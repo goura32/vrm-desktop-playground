@@ -53,6 +53,10 @@ export class MotionController {
     return this.sources;
   }
 
+  public hasMotion(motionId: string): boolean {
+    return this.entries.has(motionId);
+  }
+
   public addAnimations(fileName: string, animations: readonly VRMAnimation[]): MotionInfo[] {
     this.sources.push({ fileName, animations });
     return this.addAnimationEntries(fileName, animations);
@@ -90,6 +94,14 @@ export class MotionController {
     return true;
   }
 
+  public playMotion(motionId: string, loop: boolean): boolean {
+    if (!this.selectMotion(motionId)) {
+      return false;
+    }
+    this.setLoop(loop);
+    return this.play();
+  }
+
   public pause(): boolean {
     if (!this.action || this.playback !== 'playing') {
       return false;
@@ -100,13 +112,14 @@ export class MotionController {
   }
 
   public stop(): boolean {
-    if (!this.action) {
-      return false;
+    const hadAction = Boolean(this.action);
+    if (this.action) {
+      this.action.stop();
+      this.action.paused = false;
     }
-    this.action.stop();
-    this.action.paused = false;
+    this.vrm.humanoid.resetNormalizedPose();
     this.playback = 'stopped';
-    return true;
+    return hadAction;
   }
 
   public setLoop(enabled: boolean): void {

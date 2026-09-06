@@ -13,6 +13,9 @@ const EMPTY_STATUS: AvatarStatus = {
   model: null,
   motions: [],
   activeMotionId: null,
+  idleMotionId: null,
+  idleAutoStartSuppressed: false,
+  motionMode: 'stopped',
   playback: 'stopped',
   loop: true,
   speed: 1,
@@ -48,6 +51,7 @@ export function DebugWindow(): ReactElement {
   const [moveStep, setMoveStep] = useState(String(DEFAULT_CHARACTER_MOVE_STEP));
   const [positionX, setPositionX] = useState(String(EMPTY_STATUS.characterPosition.x));
   const [positionY, setPositionY] = useState(String(EMPTY_STATUS.characterPosition.y));
+  const [idleSelection, setIdleSelection] = useState('');
   const [coordinateError, setCoordinateError] = useState('');
   const api = typeof window === 'undefined' ? undefined : window.vrmDesktop;
 
@@ -73,6 +77,7 @@ export function DebugWindow(): ReactElement {
         setAvatarStatus(status);
         setPositionX(status.characterPosition.x.toFixed(2));
         setPositionY(status.characterPosition.y.toFixed(2));
+        setIdleSelection(status.idleMotionId ?? '');
       }
     });
 
@@ -135,6 +140,11 @@ export function DebugWindow(): ReactElement {
   const changeExpression = (expression: ExpressionInfo, value: number): void => {
     send(api, { type: 'set-expression', name: expression.name, value });
   };
+
+  const motionState = avatarStatus.phase === 'loading' || avatarStatus.phase === 'error'
+    ? avatarStatus.phase
+    : avatarStatus.motionMode;
+  const activeMotion = avatarStatus.motions.find((motion) => motion.id === avatarStatus.activeMotionId);
 
   return (
     <main className="debug-shell">
@@ -278,7 +288,31 @@ export function DebugWindow(): ReactElement {
       </section>
 
       <section className="panel-section" aria-labelledby="motion-heading">
-        <div className="section-heading"><h2 id="motion-heading">VRMA motion</h2><span className="mono">AnimationMixer</span></div>
+        <div className="section-heading"><h2 id="motion-heading">VRMA behavior</h2><span className="mono">{motionState}</span></div>
+        <div className="behavior-grid">
+          <label className="wide-label" htmlFor="idle-motion-select">Idle motion
+            <select id="idle-motion-select" value={idleSelection} onChange={(event) => setIdleSelection(event.target.value)}>
+              <option value="">No idle configured</option>
+              {avatarStatus.motions.map((motion) => <option value={motion.id} key={`idle-${motion.id}`}>{motion.fileName} ({motion.duration.toFixed(2)}s)</option>)}
+            </select>
+          </label>
+          <div className="button-row wrap">
+            <button id="set-idle-motion" type="button" className="secondary-button" disabled={!idleSelection} onClick={() => send(api, { type: 'set-idle-motion', motionId: idleSelection })}>Set as Idle</button>
+            <button id="start-idle" type="button" onClick={() => send(api, { type: 'start-idle' })}>Start / Restart Idle</button>
+          </div>
+        </div>
+        <div className="gesture-list" aria-label="Available gestures">
+          <span className="control-label">Gestures</span>
+          {avatarStatus.motions.filter((motion) => motion.id !== avatarStatus.idleMotionId).map((motion) => (
+            <div className="gesture-row" key={`gesture-${motion.id}`}>
+              <span>{motion.fileName} <span className="mono">({motion.duration.toFixed(2)}s)</span></span>
+              <button type="button" className="small-button" onClick={() => send(api, { type: 'play-gesture', motionId: motion.id })}>Play Gesture</button>
+            </div>
+          ))}
+          {avatarStatus.motions.length === 0 && <p className="hint">Gestures appear after bundled or local VRMA assets load.</p>}
+        </div>
+        <p className="hint">Motion state: <span className="mono">{motionState}</span> · current: <span className="mono">{activeMotion?.fileName ?? 'rest pose'}</span> · idle: <span className="mono">{avatarStatus.motions.find((motion) => motion.id === avatarStatus.idleMotionId)?.fileName ?? 'none'}</span></p>
+        <div className="section-heading motion-tools-heading"><h2>Technical motion controls</h2><span className="mono">AnimationMixer</span></div>
         <label className="wide-label" htmlFor="motion-select">Motion
           <select id="motion-select" value={avatarStatus.activeMotionId ?? ''} onChange={(event) => send(api, { type: 'set-motion', motionId: event.target.value })}>
             <option value="">No motion selected</option>
@@ -288,7 +322,7 @@ export function DebugWindow(): ReactElement {
         <div className="button-row wrap">
           <button type="button" onClick={() => send(api, { type: 'motion-play' })}>Play</button>
           <button type="button" className="secondary-button" onClick={() => send(api, { type: 'motion-pause' })}>Pause</button>
-          <button type="button" className="secondary-button" onClick={() => send(api, { type: 'motion-stop' })}>Stop</button>
+          <button id="stop-all-motion" type="button" className="secondary-button" onClick={() => send(api, { type: 'motion-stop' })}>Stop all motion</button>
           <label className="inline-toggle" htmlFor="motion-loop"><input id="motion-loop" type="checkbox" checked={avatarStatus.loop} onChange={(event) => send(api, { type: 'motion-set-loop', enabled: event.target.checked })} /> Loop</label>
         </div>
         <div className="speed-row">
@@ -299,7 +333,7 @@ export function DebugWindow(): ReactElement {
       </section>
 
       <section className="status-section" aria-labelledby="status-heading">
-        <div className="section-heading"><h2 id="status-heading">Status / errors</h2><span className="mono">{avatarStatus.playback}</span></div>
+        <div className="section-heading"><h2 id="status-heading">Status / errors</h2><span className="mono">playback: {avatarStatus.playback}</span></div>
         <p className={avatarStatus.phase === 'error' ? 'error-text' : 'status-text'} role="status">{avatarStatus.message}</p>
         <p className="hint">Character feet position: <span className="mono">{avatarStatus.characterPosition.x.toFixed(2)}, {avatarStatus.characterPosition.y.toFixed(2)}</span> · normalized screen-space (0,0 = top-left) · Y anchors the feet · Arrow keys move the character · backend: <span className="mono">Xwayland</span></p>
       </section>

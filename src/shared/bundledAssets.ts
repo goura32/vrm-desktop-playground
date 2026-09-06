@@ -24,6 +24,21 @@ export const BUNDLED_ASSETS = {
     displayName: 'three-vrm test motion',
     relativePath: 'vrma/test.vrma',
   },
+  'idle-relax': {
+    kind: 'vrma',
+    displayName: 'Relax idle motion',
+    relativePath: 'vrma/Relax.vrma',
+  },
+  'gesture-goodbye': {
+    kind: 'vrma',
+    displayName: 'Goodbye gesture',
+    relativePath: 'vrma/Goodbye.vrma',
+  },
+  'regression-jump': {
+    kind: 'vrma',
+    displayName: 'Jump regression motion',
+    relativePath: 'vrma/Jump.vrma',
+  },
 } as const;
 
 export type BundledAssetId = keyof typeof BUNDLED_ASSETS;

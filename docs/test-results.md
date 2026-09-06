@@ -122,7 +122,7 @@ OS 上で背面 X11 window に click が届くことの自動確認は BLOCKED�
 - キャラクター位置はBrowserWindowのX/Yではなく、`SceneController`の正規化screen-spaceとして保持し、Three.js camera projectionでVRM scene rootを移動。
 - Debugのposition controlsは既存のwindow movement IPCを使わず、validated avatar commandとしてAvatar rendererへルーティング。
 - VRMとVRMAの非同期ロード世代を分離し、モデル差し替え中の古いmotion適用を拒否。差し替え後はbundled VRMA要求をモデル単位で再試行。
-- npm lifecycleの`predev` / `prestart`でElectron main/preload bundleを生成し、clean checkoutの起動経路を確保。
+- npm lifecycleの`predev` / `prestart`でrendererとElectron main/preload bundleを生成し、clean checkoutの起動経路を確保。
 - VRM 差し替え時の animation source snapshot と mixer resource cleanup、expression reset 後の model status 更新を確認。
 - `.env` / `.env.*` は Git 管理対象外。秘密情報の追加なし。
 - Electron の既知脆弱性を解消するため Electron 44.2.0 に更新し、`npm audit` 0 件を確認。BrowserWindowは `sandbox: true`、実行環境のsetuid helper制約により起動引数は `--no-sandbox`。
@@ -130,3 +130,82 @@ OS 上で背面 X11 window に click が届くことの自動確認は BLOCKED�
 ## 既知の制約
 
 native Wayland は受入対象外で、Xwayland 経路を標準とします。`--no-sandbox` はこの PoC 実行環境で setuid sandbox helper を利用できないための開発用条件であり、本番配布設定ではありません。リップシンク、LLM/TTS/STT、複数キャラクター、インストーラー、自動更新、クラウド同期は PoC 対象外です。
+
+## 08 DESKTOP CHARACTER BEHAVIOR
+
+実施日時: 2026-09-06 08:20 JST
+対象baseline: 07修正後の `ba841b55e8fd41b28505cdcf331fd3a986892feb`、Behavior変更前にcleanを確認
+
+### 1. Assets
+
+| Asset | Source | License | Role | Committed |
+|---|---|---|---|---|
+| `Relax.vrma` | `tk256ailab/vrm-viewer` pinned revision `0cd2267f36939da589afc8eac449b5b9ccce4c01` | MIT License (repository LICENSE; file history checked) | Idle candidate, 3.933s / 52 tracks | Yes |
+| `Goodbye.vrma` | same pinned revision | MIT License (repository LICENSE; file history checked) | one-shot Gesture candidate, 3.933s / 52 tracks | Yes |
+| `Jump.vrma` | same pinned revision | MIT License (repository LICENSE; file history checked) | larger-motion regression candidate, 3.933s / 52 tracks | Yes |
+
+The source URL, raw download URL, revision, SHA-256, redistribution decision, and credit are in `assets/manifest.json`. `test.vrma` remains the existing three-vrm technical fixture. BOOTH and VRoid Hub candidates remain `BLOCKED_ASSET` because current redistribution terms were not independently confirmed.
+
+### 2. Baseline
+
+- VRM: `VRM1_Constraint_Twist_Sample.vrm` (VRM 1.0; Humanoid, Expression, LookAt, Spring Bone, and VRMA capabilities available).
+- Idle: no configured or automatic Idle; the existing startup path showed the rest/T-pose. `Relax.vrma` was then loaded and evaluated as the candidate, but the pre-change runtime had no Idle slot or loop policy.
+- Gesture: `Goodbye.vrma` one-shot candidate; `Jump.vrma` was used for the larger-motion regression check. Existing `test.vrma` remained a 3.00s technical fixture.
+- Idle duration: candidate `Relax.vrma` is 3.933s; before the change it was not automatically looped.
+- Observation: manual VRMA playback worked, but the current implementation had no automatic Idle, no Gesture-vs-Idle state, and no return-to-Idle after a one-shot. Direct motion switching was evaluated on the real model; no acceptance-blocking, obvious full-body posture jump was observed, so crossfade was not added.
+- Blink / LookAt / Spring Bone: 07 behavior was rechecked while the model and VRMA runtime were active; capabilities remained available, with the same weak-but-not-broken LookAt/Blink visibility noted in 07.
+- Five-minute impression: with the old behavior path the character could remain visibly static when no manual motion was active; the missing automatic Idle was the dominant issue.
+
+### 3. Behavior implementation
+
+- Idle handling: added `idleMotionId` and `motionMode` (`idle | gesture | stopped`) to the serializable status. The bundled technical fixture plus Relax/Goodbye/Jump are loaded through the fixed allowlist, serially per model. Relax is selected as Idle and starts automatically after the VRM/motion load sequence is ready; an explicitly selected alternate Idle is preserved.
+- Gesture handling: added `Play Gesture` for loaded motions; Gesture playback is one-shot and a new Gesture replaces the current one.
+- Return-to-idle: current-controller, model-load-generation, motion-load-generation, and loading-state guards remain in the completion path. A valid Gesture completion starts the configured Idle; an absent or failed Idle stops the action and resets the normalized humanoid rest pose.
+- Stop-all semantics: `motion-stop` publishes `idleAutoStartSuppressed=true`; model/motion loading does not clear that intent, so an explicit Stop-all is not undone by a later automatic Idle bootstrap. Explicit `Start Idle`, `Play`, or `Play Gesture` clears the suppression.
+- Status accuracy: playback/loop/speed commands issued during an asynchronous VRMA load keep the published phase at `loading` until that load completes.
+- Stop semantics: `Stop all motion` remains an explicit stop-all operation; it does not silently restart Idle. `Start / Restart Idle` is separate.
+- Crossfade: not implemented. The real-screen transition evaluation did not show a clear posture jump at normal speed, and the 08 rule says not to add it without evidence.
+- LookAt changes: none.
+- Blink changes: none.
+
+### 4. Evaluation
+
+| Item | Score | Notes |
+|---|---:|---|
+| Idleの自然さ | 3 | Relax provides visible continuous motion; the source animation itself is still a simple candidate rather than a full production idle. |
+| Loop境界 | 3 | Loop boundary was observed in the real Avatar window without disappearance or a stuck state; the asset's pose continuity is moderate. |
+| Gesture開始 | 4 | Goodbye and Jump start from the Debug behavior list and replace the current Idle without loading errors. |
+| Idle復帰 | 4 | One-shot completion visibly and status-wise returns to `idle / Relax.vrma`. |
+| Motion transition | 4 | Idle→Gesture, Gesture→Idle, and Gesture A→B were exercised; no obvious posture jump required crossfade. |
+| Blinkとの共存 | 3 | Manual/auto Blink paths remain functional; closure is visually subtle on this model. |
+| LookAtとの共存 | 2 | Capability and pointer path remain available, but the model's visible head/eye response is weak as in 07. |
+| Spring Boneとの共存 | 3 | Spring Bone remains available with no runaway vibration or error during Idle/Gesture playback. |
+| 邪魔にならなさ | 3 | Fullscreen transparent overlay remains unobtrusive outside the centered character; no HUD or floor was added. |
+| デスクトップキャラクター完成感 | 4 | Behavior is materially more complete than the static/technical baseline, while source-motion and LookAt quality remain limitations. |
+
+### 5. Issues
+
+| Priority | Issue | Fixed | Notes |
+|---|---|---|---|
+| A | No automatic Idle slot or loop | Yes | Added configured Idle state and serial bundled-motion bootstrap. |
+| A | One-shot Gesture ended without returning to Idle | Yes | Current Gesture completion starts Idle only when the completion owner is still current. |
+| B | Old Gesture completion could overwrite a newer Gesture/model state | Yes | Existing generation and controller identity guards are preserved and covered by behavior tests/runtime interruption evaluation. |
+| B | Direct motion switching could show a posture jump | No change needed | Real-screen evaluation did not show an obvious jump; no crossfade complexity was added. |
+| C | Relax source motion is not production-quality breathing/weight-shift animation | No | Asset quality is the bottleneck; no synthetic animation or state machine was added. |
+| C | LookAt/Blink visibility is weak | No | No functional break or measured need for smoothing/timing changes. |
+
+### 6. Regression
+
+- lint: PASS
+- typecheck: PASS
+- test: PASS (26 test files / 40 tests; targeted RED→GREEN behavior tests, then full suite)
+- build: PASS
+- audit: PASS (`0 vulnerabilities`)
+- clean-start: PASS after deleting `dist`; `npm start` rebuilt renderer and Electron bundles before opening the app.
+- Computer Use: PASS for visible Idle loop, Debug behavior panel, Goodbye/Jump one-shot playback, Gesture A→B interruption, completion message, and final Idle return. Blink/LookAt/Spring Bone capabilities remained available.
+- 5-minute soak: PASS. The running Electron app stayed on-screen for at least 5 minutes with Idle active; final state was `phase=ready`, `motion state=idle`, `current=Relax.vrma`, `idle=Relax.vrma`, with no model disappearance, exception, or runaway motion. A final capture showed the same full-body Avatar and behavior panel.
+
+### 7. Git
+
+- Final commit: to be recorded by the final commit and report after the corrected staged-diff review.
+- git status: must be clean after commit.

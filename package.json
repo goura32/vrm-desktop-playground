@@ -8,7 +8,7 @@
   "scripts": {
     "predev": "npm run build:electron",
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron --ozone-platform=x11 --no-sandbox . --dev\"",
-    "prestart": "npm run build:electron",
+    "prestart": "npm run build",
     "start": "electron --ozone-platform=x11 --no-sandbox .",
     "build": "npm run typecheck && vite build && npm run build:electron",
     "build:electron": "esbuild src/main/main.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist-electron/main.cjs && esbuild src/main/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist-electron/preload.cjs",

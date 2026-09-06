@@ -6,6 +6,9 @@ describe('IPC runtime validation', () => {
     expect(isAvatarCommand({ type: 'set-expression', name: 'happy', value: 0.5 })).toBe(true);
     expect(isAvatarCommand({ type: 'set-character-position', position: { x: 0.25, y: 0.75 } })).toBe(true);
     expect(isAvatarCommand({ type: 'move-character', direction: 'right', step: 0.05 })).toBe(true);
+    expect(isAvatarCommand({ type: 'set-idle-motion', motionId: 'Relax.vrma-0' })).toBe(true);
+    expect(isAvatarCommand({ type: 'start-idle' })).toBe(true);
+    expect(isAvatarCommand({ type: 'play-gesture', motionId: 'Goodbye.vrma-0' })).toBe(true);
     expect(isAvatarCommand({ type: 'set-character-position', position: { x: 2, y: 0.5 } })).toBe(false);
     expect(isAvatarCommand({ type: 'move-character', direction: 'diagonal', step: 0.05 })).toBe(false);
     expect(isAvatarCommand({ type: 'move-character', direction: 'right', step: 2 })).toBe(false);
@@ -22,6 +25,9 @@ describe('IPC runtime validation', () => {
       model: null,
       motions: [],
       activeMotionId: null,
+      idleMotionId: null,
+      idleAutoStartSuppressed: false,
+      motionMode: 'stopped',
       playback: 'stopped',
       loop: true,
       speed: 1,

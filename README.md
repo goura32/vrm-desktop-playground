@@ -9,7 +9,7 @@ npm install
 npm start
 ```
 
-Linux の `start` は `--ozone-platform=x11 --no-sandbox` を付けます。Ubuntu GNOME Wayland では Xwayland 経由を標準経路にし、透明・枠なしウィンドウを安定して扱います。`npm start` は `prestart` でElectronのmain/preload bundleを生成してから起動するため、clean checkoutでは先に手動buildする必要はありません。開発中に Vite のホットリロードを使う場合は `npm run dev` を実行します。
+Linux の `start` は `--ozone-platform=x11 --no-sandbox` を付けます。Ubuntu GNOME Wayland では Xwayland 経由を標準経路にし、透明・枠なしウィンドウを安定して扱います。`npm start` は `prestart` でrendererとElectronのmain/preload bundleを生成してから起動するため、clean checkoutでも先に手動buildする必要はありません。開発中に Vite のホットリロードを使う場合は `npm run dev` を実行します。
 
 ## 操作
 
@@ -18,6 +18,7 @@ Linux の `start` は `--ozone-platform=x11 --no-sandbox` を付けます。Ubun
 - Avatar Window は Primary Display 全体を覆う透明オーバーレイで、常時 Click Through です。Click Through / Interaction Mode の切り替えUIや、Avatar Window自体の移動UIはありません。
 - キャラクター位置は正規化 screen-space（左上が`0,0`、右下が`1,1`）で管理し、Debug Window の X/Y入力と矢印ボタンから変更できます。Yはモデルの足元をアンカーとし、これはBrowserWindowの位置ではなく、Three.js/VRM sceneの位置です。
 - VRM を差し替えると、モデル情報・Preset/Custom Expression・Humanoid・LookAt/Spring Bone/VRMA capability が更新されます。
+- VRMA behavior panel では、設定済みの `Relax.vrma` を常時Idle loopとして自動再生し、`Goodbye.vrma` / `Jump.vrma` などのGestureをone-shot再生できます。Gesture完了後はIdleへ戻り、Idleが設定されていない場合はrest poseへfallbackします。
 
 ## アセットとライセンス
 

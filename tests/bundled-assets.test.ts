@@ -9,9 +9,15 @@ describe('bundled asset allowlist', () => {
       'expression-overridden',
       'expression-overrides',
       'test-vrma',
+      'idle-relax',
+      'gesture-goodbye',
+      'regression-jump',
     ]);
     expect(getBundledAsset('seed-san')).toMatchObject({ kind: 'vrm', relativePath: 'vrm/Seed-san.vrm' });
     expect(getBundledAsset('test-vrma')).toMatchObject({ kind: 'vrma', relativePath: 'vrma/test.vrma' });
+    expect(getBundledAsset('idle-relax')).toMatchObject({ kind: 'vrma', relativePath: 'vrma/Relax.vrma' });
+    expect(getBundledAsset('gesture-goodbye')).toMatchObject({ kind: 'vrma', relativePath: 'vrma/Goodbye.vrma' });
+    expect(getBundledAsset('regression-jump')).toMatchObject({ kind: 'vrma', relativePath: 'vrma/Jump.vrma' });
   });
 
   it('rejects inherited object keys instead of treating them as allowlisted assets', () => {

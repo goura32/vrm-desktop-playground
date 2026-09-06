@@ -1,4 +1,4 @@
-import type { MotionPlayback } from '../../shared/types';
+import type { AvatarPhase, MotionMode, MotionPlayback } from '../../shared/types';
 
 export type MotionLoopMode = 'repeat' | 'once';
 
@@ -28,4 +28,54 @@ export function shouldPublishMotionCompletion(
   ownerIsCurrent: boolean,
 ): boolean {
   return !loading && ownerIsCurrent && previous === 'playing' && motionPlaybackTransition(previous, current) === 'stopped';
+}
+
+export function shouldResetToRestPoseAfterCompletion(
+  previous: MotionPlayback,
+  current: MotionPlayback,
+  loading: boolean,
+  ownerIsCurrent: boolean,
+): boolean {
+  return shouldPublishMotionCompletion(previous, current, loading, ownerIsCurrent);
+}
+
+export function shouldRecoverGestureAfterAsyncLoad(
+  completionWasSuppressed: boolean,
+  mode: MotionMode,
+  playback: MotionPlayback,
+  loading: boolean,
+  ownerIsCurrent: boolean,
+): boolean {
+  return completionWasSuppressed && !loading && ownerIsCurrent && mode === 'gesture' && playback === 'stopped';
+}
+
+export function shouldReturnToIdle(
+  previous: MotionPlayback,
+  current: MotionPlayback,
+  mode: MotionMode,
+  idleMotionId: string | null,
+  ownerIsCurrent: boolean,
+): boolean {
+  return shouldPublishMotionCompletion(previous, current, false, ownerIsCurrent) && mode === 'gesture' && idleMotionId !== null;
+}
+
+export function motionModeForPlayback(motionId: string, idleMotionId: string | null, loop: boolean): MotionMode {
+  return motionId === idleMotionId && loop ? 'idle' : 'gesture';
+}
+
+export function shouldStartAutomaticIdle(
+  idleMotionId: string | null,
+  mode: MotionMode,
+  playback: MotionPlayback,
+  alreadyStarted: boolean,
+  suppressed: boolean = false,
+): boolean {
+  return !alreadyStarted && !suppressed && idleMotionId !== null && mode === 'stopped' && playback === 'stopped';
+}
+
+export function motionPhaseForPlayback(hasModel: boolean, loading: boolean, currentPhase: AvatarPhase): AvatarPhase {
+  if (loading) {
+    return 'loading';
+  }
+  return hasModel ? 'ready' : currentPhase;
 }

@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { AvatarStatus } from '../../shared/types';
+import type { BundledAssetId } from '../../shared/bundledAssets';
 import { AvatarRuntime, getInitialAvatarStatus } from './AvatarRuntime';
+import { shouldStartAutomaticIdle } from '../vrm/motionModel';
 import './styles.css';
+
+const DEFAULT_MOTION_ASSETS: readonly { assetId: BundledAssetId; fileName: string }[] = [
+  { assetId: 'test-vrma', fileName: 'test.vrma' },
+  { assetId: 'idle-relax', fileName: 'Relax.vrma' },
+  { assetId: 'gesture-goodbye', fileName: 'Goodbye.vrma' },
+  { assetId: 'regression-jump', fileName: 'Jump.vrma' },
+];
 
 export function AvatarWindow(): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -16,21 +25,47 @@ export function AvatarWindow(): ReactElement {
       return undefined;
     }
 
-    let bundledMotionRequestedForModel: string | null = null;
+    let bundledMotionModel: string | null = null;
+    let requestedMotionAssets = new Set<BundledAssetId>();
+    let automaticIdleStarted = false;
     const runtime = new AvatarRuntime(canvas, (nextStatus) => {
       setStatus(nextStatus);
       api.reportAvatarStatus(nextStatus);
       if (nextStatus.phase === 'loading' && nextStatus.message.startsWith('Loading VRM 1.0 model:')) {
-        bundledMotionRequestedForModel = null;
+        bundledMotionModel = null;
+        requestedMotionAssets = new Set();
+        automaticIdleStarted = false;
       }
-      if (
-        nextStatus.phase === 'ready' &&
-        nextStatus.model &&
-        nextStatus.motions.length === 0 &&
-        bundledMotionRequestedForModel !== nextStatus.model.fileName
-      ) {
-        bundledMotionRequestedForModel = nextStatus.model.fileName;
-        void api.loadBundledAsset('test-vrma');
+      if (nextStatus.phase !== 'ready' || !nextStatus.model) {
+        return;
+      }
+      if (bundledMotionModel !== nextStatus.model.fileName) {
+        bundledMotionModel = nextStatus.model.fileName;
+        requestedMotionAssets = new Set();
+        automaticIdleStarted = false;
+      }
+      const idleMotion = nextStatus.motions.find((motion) => motion.fileName === 'Relax.vrma');
+      if (idleMotion && nextStatus.idleMotionId === null) {
+        runtime.handleCommand({ type: 'set-idle-motion', motionId: idleMotion.id });
+        return;
+      }
+      if (shouldStartAutomaticIdle(
+        nextStatus.idleMotionId,
+        nextStatus.motionMode,
+        nextStatus.playback,
+        automaticIdleStarted,
+        nextStatus.idleAutoStartSuppressed,
+      )) {
+        automaticIdleStarted = true;
+        runtime.handleCommand({ type: 'start-idle' });
+        return;
+      }
+      const missingAsset = DEFAULT_MOTION_ASSETS.find(({ assetId, fileName }) =>
+        !requestedMotionAssets.has(assetId) && !nextStatus.motions.some((motion) => motion.fileName === fileName),
+      );
+      if (missingAsset) {
+        requestedMotionAssets.add(missingAsset.assetId);
+        void api.loadBundledAsset(missingAsset.assetId);
       }
     });
     const removeCommandListener = api.onAvatarCommand((command) => runtime.handleCommand(command));

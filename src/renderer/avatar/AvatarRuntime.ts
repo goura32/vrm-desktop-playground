@@ -1,6 +1,6 @@
 import { VRMUtils } from '@pixiv/three-vrm';
 import type { VRM } from '@pixiv/three-vrm';
-import type { AvatarCommand, AvatarStatus, Capability, VrmModelInfo } from '../../shared/types';
+import type { AvatarCommand, AvatarStatus, Capability, MotionMode, VrmModelInfo } from '../../shared/types';
 import { ExpressionController } from '../vrm/ExpressionController';
 import { LookAtController } from '../vrm/LookAtController';
 import { MotionController } from '../vrm/MotionController';
@@ -8,7 +8,13 @@ import { parseVrm, parseVrma } from '../vrm/VrmLoader';
 import { detectVrmFormat, toCapability } from '../vrm/vrmModelInfo';
 import { SceneController } from '../scene/SceneController';
 import { DEFAULT_CHARACTER_POSITION } from '../../shared/scenePosition';
-import { shouldPublishMotionCompletion } from '../vrm/motionModel';
+import {
+  motionModeForPlayback,
+  motionPhaseForPlayback,
+  shouldRecoverGestureAfterAsyncLoad,
+  shouldResetToRestPoseAfterCompletion,
+  shouldReturnToIdle,
+} from '../vrm/motionModel';
 
 const EMPTY_STATUS: AvatarStatus = {
   phase: 'idle',
@@ -16,6 +22,9 @@ const EMPTY_STATUS: AvatarStatus = {
   model: null,
   motions: [],
   activeMotionId: null,
+  idleMotionId: null,
+  idleAutoStartSuppressed: false,
+  motionMode: 'stopped',
   playback: 'stopped',
   loop: true,
   speed: 1,
@@ -43,6 +52,15 @@ export class AvatarRuntime {
   private motionLoadRequestId = 0;
   private modelLoading = false;
   private motionLoading = false;
+  private idleMotionId: string | null = null;
+  private motionMode: MotionMode = 'stopped';
+  private idleAutoStartSuppressed = false;
+
+  private suppressedGestureCompletion: {
+    controller: MotionController;
+    modelRequestId: number;
+    motionId: string;
+  } | null = null;
 
   public constructor(canvas: HTMLCanvasElement, onStatus: (status: AvatarStatus) => void) {
     this.sceneController = new SceneController(canvas);
@@ -84,6 +102,15 @@ export class AvatarRuntime {
       case 'set-motion':
         this.setMotion(command.motionId);
         break;
+      case 'set-idle-motion':
+        this.setIdleMotion(command.motionId);
+        break;
+      case 'start-idle':
+        this.startIdle();
+        break;
+      case 'play-gesture':
+        this.playGesture(command.motionId);
+        break;
       case 'motion-play':
         this.setMotionPlayback('play');
         break;
@@ -95,6 +122,9 @@ export class AvatarRuntime {
         break;
       case 'motion-set-loop':
         this.motionController?.setLoop(command.enabled);
+        if (this.motionController?.activeId && this.motionMode !== 'stopped') {
+          this.motionMode = motionModeForPlayback(this.motionController.activeId, this.idleMotionId, command.enabled);
+        }
         this.publishMotion(`Loop ${command.enabled ? 'enabled' : 'disabled'}.`);
         break;
       case 'motion-set-speed':
@@ -119,6 +149,7 @@ export class AvatarRuntime {
     this.motionLoadRequestId += 1;
     this.modelLoading = false;
     this.motionLoading = false;
+    this.suppressedGestureCompletion = null;
     this.motionController?.dispose();
     this.lookAtController?.dispose();
     if (this.vrm) {
@@ -133,11 +164,13 @@ export class AvatarRuntime {
     this.motionLoadRequestId += 1;
     this.modelLoading = true;
     this.motionLoading = false;
+    this.suppressedGestureCompletion = null;
     const previousSources = this.motionController?.sourceFiles.map((source) => ({
       fileName: source.fileName,
       animations: [...source.animations],
     })) ?? [];
     const previousMotionId = this.motionController?.activeId;
+    const previousIdleMotionId = this.idleMotionId;
     this.publish({ phase: 'loading', message: `Loading VRM 1.0 model: ${fileName}`, manualBlink: false });
 
     try {
@@ -165,6 +198,10 @@ export class AvatarRuntime {
       if (previousMotionId) {
         this.motionController.selectMotion(previousMotionId);
       }
+      this.idleMotionId = previousIdleMotionId && this.motionController.hasMotion(previousIdleMotionId)
+        ? previousIdleMotionId
+        : null;
+      this.motionMode = 'stopped';
       this.modelLoading = false;
       this.publish({
         phase: 'ready',
@@ -172,6 +209,8 @@ export class AvatarRuntime {
         model: this.createModelInfo(),
         motions: this.motionController.motionInfos,
         activeMotionId: this.motionController.activeId,
+        idleMotionId: this.idleMotionId,
+        motionMode: this.motionMode,
         playback: this.motionController.playbackState,
         loop: this.motionController.loopEnabled,
         speed: this.motionController.playbackSpeed,
@@ -225,6 +264,14 @@ export class AvatarRuntime {
         return;
       }
       this.motionLoading = false;
+      if (
+        this.suppressedGestureCompletion?.controller === targetMotionController &&
+        this.suppressedGestureCompletion.modelRequestId === modelRequestId
+      ) {
+        targetMotionController.stop();
+        this.suppressedGestureCompletion = null;
+        this.motionMode = 'stopped';
+      }
       this.publish({ phase: 'error', message: `VRMA load failed: ${errorMessage(error)}` });
     }
   }
@@ -258,10 +305,56 @@ export class AvatarRuntime {
       this.publish({ message: 'The selected motion is unsupported or unavailable.' });
       return;
     }
+    this.motionMode = 'stopped';
+    this.suppressedGestureCompletion = null;
     this.publishMotion(`Selected motion ${motionId}.`);
   }
 
+  private setIdleMotion(motionId: string): void {
+    if (!this.motionController?.hasMotion(motionId)) {
+      this.publish({ message: 'The selected idle motion is unsupported or unavailable.' });
+      return;
+    }
+    this.idleMotionId = motionId;
+    this.publish({ idleMotionId: motionId, message: `Idle motion set to ${motionId}.` });
+  }
+
+  private startIdle(): void {
+    const controller = this.motionController;
+    this.idleAutoStartSuppressed = false;
+    this.suppressedGestureCompletion = null;
+    if (!controller || !this.idleMotionId) {
+      controller?.stop();
+      this.motionMode = 'stopped';
+      this.publish({ motionMode: this.motionMode, message: 'No idle motion is configured; using the rest pose.' });
+      return;
+    }
+    if (!controller.playMotion(this.idleMotionId, true)) {
+      controller.stop();
+      this.motionMode = 'stopped';
+      this.publish({ motionMode: this.motionMode, message: 'The configured idle motion is unavailable; using the rest pose.' });
+      return;
+    }
+    this.motionMode = 'idle';
+    this.publishMotion(`Idle started: ${this.idleMotionId}.`);
+  }
+
+  private playGesture(motionId: string): void {
+    const controller = this.motionController;
+    if (!controller || !controller.playMotion(motionId, false)) {
+      this.publish({ message: 'The selected gesture is unsupported or unavailable.' });
+      return;
+    }
+    this.motionMode = 'gesture';
+    this.idleAutoStartSuppressed = false;
+    this.suppressedGestureCompletion = null;
+    this.publishMotion(`Gesture played: ${motionId}.`);
+  }
+
   private setMotionPlayback(action: 'play' | 'pause' | 'stop'): void {
+    if (action === 'stop') {
+      this.idleAutoStartSuppressed = true;
+    }
     const controller = this.motionController;
     if (!controller) {
       this.publish({ message: 'Load a VRM and VRMA motion before using playback controls.' });
@@ -272,6 +365,13 @@ export class AvatarRuntime {
       this.publish({ message: `Motion ${action} is unsupported or no motion is selected.` });
       return;
     }
+    if (action === 'play' && controller.activeId) {
+      this.idleAutoStartSuppressed = false;
+      this.motionMode = motionModeForPlayback(controller.activeId, this.idleMotionId, controller.loopEnabled);
+    } else if (action === 'stop') {
+      this.motionMode = 'stopped';
+    }
+    this.suppressedGestureCompletion = null;
     const verb = action === 'play' ? 'played' : action === 'pause' ? 'paused' : 'stopped';
     this.publishMotion(`Motion ${verb}.`);
   }
@@ -295,10 +395,13 @@ export class AvatarRuntime {
   private publishMotion(message: string): void {
     const controller = this.motionController;
     this.publish({
-      phase: this.vrm ? 'ready' : this.status.phase,
+      phase: motionPhaseForPlayback(Boolean(this.vrm), this.modelLoading || this.motionLoading, this.status.phase),
       message,
       motions: controller?.motionInfos ?? [],
       activeMotionId: controller?.activeId ?? null,
+      idleMotionId: this.idleMotionId,
+      idleAutoStartSuppressed: this.idleAutoStartSuppressed,
+      motionMode: this.motionMode,
       playback: controller?.playbackState ?? 'stopped',
       loop: controller?.loopEnabled ?? true,
       speed: controller?.playbackSpeed ?? 1,
@@ -314,6 +417,7 @@ export class AvatarRuntime {
     const motionRequestId = this.motionLoadRequestId;
     const loading = this.modelLoading || this.motionLoading;
     const previousPlayback = controller?.playbackState ?? this.status.playback;
+    const previousMotionMode = this.motionMode;
     controller?.update(delta);
     const ownerIsCurrent =
       !loading &&
@@ -323,7 +427,61 @@ export class AvatarRuntime {
       this.motionController === controller &&
       this.modelLoadRequestId === modelRequestId &&
       this.motionLoadRequestId === motionRequestId;
-    if (controller && shouldPublishMotionCompletion(previousPlayback, controller.playbackState, loading, ownerIsCurrent)) {
+    if (
+      controller &&
+      !ownerIsCurrent &&
+      previousMotionMode === 'gesture' &&
+      previousPlayback === 'playing' &&
+      controller.playbackState === 'stopped' &&
+      controller.activeId
+    ) {
+      this.suppressedGestureCompletion = {
+        controller,
+        modelRequestId,
+        motionId: controller.activeId,
+      };
+    }
+    const suppressedCompletion = this.suppressedGestureCompletion;
+    const suppressedCompletionMatches = Boolean(
+      suppressedCompletion &&
+        suppressedCompletion.controller === controller &&
+        suppressedCompletion.modelRequestId === modelRequestId &&
+        suppressedCompletion.motionId === controller?.activeId &&
+        this.status.phase !== 'error',
+    );
+    if (
+      controller &&
+      shouldRecoverGestureAfterAsyncLoad(
+        suppressedCompletionMatches,
+        this.motionMode,
+        controller.playbackState,
+        loading,
+        ownerIsCurrent,
+      )
+    ) {
+      this.suppressedGestureCompletion = null;
+      if (this.idleMotionId && controller.playMotion(this.idleMotionId, true)) {
+        this.motionMode = 'idle';
+        this.publishMotion('Gesture finished; returned to idle.');
+      } else {
+        controller.stop();
+        this.motionMode = 'stopped';
+        this.publishMotion('Motion finished; idle motion is unavailable.');
+      }
+    } else if (controller && shouldReturnToIdle(previousPlayback, controller.playbackState, previousMotionMode, this.idleMotionId, ownerIsCurrent)) {
+      this.suppressedGestureCompletion = null;
+      if (this.idleMotionId && controller.playMotion(this.idleMotionId, true)) {
+        this.motionMode = 'idle';
+        this.publishMotion('Gesture finished; returned to idle.');
+      } else {
+        controller.stop();
+        this.motionMode = 'stopped';
+        this.publishMotion('Motion finished; idle motion is unavailable.');
+      }
+    } else if (controller && shouldResetToRestPoseAfterCompletion(previousPlayback, controller.playbackState, loading, ownerIsCurrent)) {
+      this.suppressedGestureCompletion = null;
+      controller.stop();
+      this.motionMode = 'stopped';
       this.publishMotion('Motion finished.');
     }
     this.vrm?.update(delta);

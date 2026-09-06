@@ -11,6 +11,7 @@ import { isFilePayload, isLikelyAssetName } from './fileValidation';
 const CAPABILITY_NAMES = ['humanoid', 'presetExpressions', 'customExpressions', 'blink', 'lookAt', 'springBone', 'vrma'] as const;
 const AVATAR_PHASES = ['idle', 'loading', 'ready', 'error'] as const;
 const MOTION_PLAYBACKS = ['stopped', 'playing', 'paused'] as const;
+const MOTION_MODES = ['idle', 'gesture', 'stopped'] as const;
 const MOVE_DIRECTIONS = ['up', 'down', 'left', 'right'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -96,7 +97,10 @@ export function isAvatarCommand(value: unknown): value is AvatarCommand {
     case 'motion-set-loop':
       return isBoolean(value.enabled);
     case 'set-motion':
+    case 'set-idle-motion':
+    case 'play-gesture':
       return isBoundedString(value.motionId);
+    case 'start-idle':
     case 'motion-play':
     case 'motion-pause':
     case 'motion-stop':
@@ -123,6 +127,9 @@ export function isAvatarStatus(value: unknown): value is AvatarStatus {
     (value.model === null || isVrmModelInfo(value.model)) &&
     Array.isArray(value.motions) && value.motions.length <= 100 && value.motions.every((motion) => isMotionInfo(motion)) &&
     (value.activeMotionId === null || isBoundedString(value.activeMotionId)) &&
+    (value.idleMotionId === null || isBoundedString(value.idleMotionId)) &&
+    isBoolean(value.idleAutoStartSuppressed) &&
+    typeof value.motionMode === 'string' && MOTION_MODES.includes(value.motionMode as (typeof MOTION_MODES)[number]) &&
     typeof value.playback === 'string' && MOTION_PLAYBACKS.includes(value.playback as (typeof MOTION_PLAYBACKS)[number]) &&
     isBoolean(value.loop) &&
     isFiniteNumber(value.speed) && value.speed >= 0.1 && value.speed <= 2 &&

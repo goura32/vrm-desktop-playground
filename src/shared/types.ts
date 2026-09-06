@@ -36,6 +36,7 @@ export interface MotionInfo {
 
 export type AvatarPhase = 'idle' | 'loading' | 'ready' | 'error';
 export type MotionPlayback = 'stopped' | 'playing' | 'paused';
+export type MotionMode = 'idle' | 'gesture' | 'stopped';
 
 export interface CharacterPosition {
   x: number;
@@ -50,6 +51,9 @@ export interface AvatarStatus {
   model: VrmModelInfo | null;
   motions: MotionInfo[];
   activeMotionId: string | null;
+  idleMotionId: string | null;
+  idleAutoStartSuppressed: boolean;
+  motionMode: MotionMode;
   playback: MotionPlayback;
   loop: boolean;
   speed: number;
@@ -73,6 +77,9 @@ export type AvatarCommand =
   | { type: 'blink' }
   | { type: 'set-look-at'; enabled: boolean }
   | { type: 'set-motion'; motionId: string }
+  | { type: 'set-idle-motion'; motionId: string }
+  | { type: 'start-idle' }
+  | { type: 'play-gesture'; motionId: string }
   | { type: 'motion-play' }
   | { type: 'motion-pause' }
   | { type: 'motion-stop' }

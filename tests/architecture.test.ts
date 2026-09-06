@@ -28,7 +28,7 @@ describe('Electron security boundary', () => {
     expect(avatar).toContain('Content-Security-Policy');
     expect(packageJson.main).toBe('dist-electron/main.cjs');
     expect(packageJson.scripts.predev).toContain('build:electron');
-    expect(packageJson.scripts.prestart).toContain('build:electron');
+    expect(packageJson.scripts.prestart).toBe('npm run build');
     expect(main).toContain('screen.getPrimaryDisplay()');
     expect(main).toContain("screen.on('display-metrics-changed'");
     expect(main).toContain('setIgnoreMouseEvents(true, { forward: true })');

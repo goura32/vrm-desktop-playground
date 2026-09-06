@@ -16,3 +16,5 @@ The versions below are the lockfile-resolved direct dependencies at the PoC comm
 | ESLint | 9.39.5 | MIT | https://github.com/eslint/eslint/blob/main/LICENSE |
 
 Bundled VRM/VRMA sample files are tracked separately in [`assets/manifest.json`](assets/manifest.json), which records source URLs, checksums, license review, redistribution status, and credit requirements.
+
+The committed `Relax.vrma`, `Goodbye.vrma`, and `Jump.vrma` files are from [tk256ailab/vrm-viewer](https://github.com/tk256ailab/vrm-viewer), revision `0cd2267f36939da589afc8eac449b5b9ccce4c01`. The repository is MIT-licensed; credit TK256 and the source repository when redistributing these motion files. See the per-file SHA-256 and license evidence in `assets/manifest.json`.
