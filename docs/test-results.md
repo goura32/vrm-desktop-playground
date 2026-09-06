@@ -207,5 +207,6 @@ The source URL, raw download URL, revision, SHA-256, redistribution decision, an
 
 ### 7. Git
 
-- Final commit: to be recorded by the final commit and report after the corrected staged-diff review.
-- git status: must be clean after commit.
+- Behavior implementation commit: `b03cc9d` (`[verified] feat: add desktop character behavior`).
+- Documentation follow-up commit: recorded in the final report after this report update.
+- git status: must be clean after the final documentation commit.
