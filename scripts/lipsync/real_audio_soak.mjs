@@ -86,7 +86,7 @@ async function run() {
 }
 
 run().catch((error) => {
-  phase9.sendError(error?.stack ?? String(error));
+  phase9?.sendError(error?.stack ?? String(error));
   window.close();
 });
 `;
