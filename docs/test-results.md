@@ -138,7 +138,7 @@ native Wayland は受入対象外で、Xwayland 経路を標準とします。`-
 ### Preprocessing evidence
 
 - Qwen3-TTS `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice`, revision `85e237c12c027371202489a0ec509ded67b5e4b5`, speaker `ono_anna` を dedicated Python 3.11 venvでロードし、JP/EN/ZH WAVを生成。リポジトリ内スモーク生成も `qwen-script-smoke.wav` (24 kHz, 3.68 s) で終了コード0。
-- MFA `mmcauliffe/montreal-forced-aligner@sha256:1986960fcb5169979630a7efb2576480c587500ab556c9daa66a930f471215b8` (MFA `3.4.3.dev0+gd2dc283bd.d20260820`) をDocker実行。`japanese_mfa`, `english_mfa`, `mandarin_mfa` の3言語をJSON出力し、`JP01.json`, `EN01.json`, `ZH01.json` の phone tierを確認。wrapper経由のEnglish alignmentも1 utterance / 21.242 s / exit 0。
+- MFA `mmcauliffe/montreal-forced-aligner@sha256:1986960fcb5169979630a7efb2576480c587500ab556c9daa66a930f471215b8` (MFA `3.4.3.dev0+gd2dc283bd.d20260820`) をDocker実行。`japanese_mfa`, `english_mfa`, `mandarin_mfa` の3言語をJSON出力し、`JP01.json`, `EN01.json`, `ZH01.json` の phone tierを確認。pinned digest wrapper経由のEnglish alignmentも1 utterance / 20.459 s / exit 0。
 - `npm run test:lipsync:real` で同じproduction `AudioClock`/`LipSyncController`を通し、JP `8.00 s / 489 frames`、EN `7.60 s / 464 frames`、ZH `7.52 s / 461 frames`を実WAVでdecode/play。各々 stopped、end/cumulative drift 0 ms、dropped frame 0、5口形全てを確認（短尺言語検証は `PHASE9_MIN_DURATION=0`）。
 - `build_timeline.py` でJP/EN/ZHと30秒超 soak用timelineを生成。全出力は `/home/ws1/.cache/vrm-phase9-*` 配下で、Gitには入れていない。
 
