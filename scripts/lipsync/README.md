@@ -49,9 +49,7 @@ python3.11 build_timeline.py \
 ```
 
 `build_timeline.py` is dependency-free. Its output is JSON schema version 1,
-contains `duration`, `sampleRate`, `sourceAudio`, `sourceLanguage`, aligner
-metadata, original phones, and weights limited to `aa`, `ih`, `ou`, `ee`, and
-`oh`.
+contains `duration`, `audioDuration`, `interpolationMs`, `sourceAudio`, `language`, aligner metadata, and keyframes carrying original `sourcePhone` values; weights are limited to `aa`, `ih`, `ou`, `ee`, and `oh`.
 
 ## Mapping policy
 
