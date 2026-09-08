@@ -419,6 +419,93 @@ h2 {
   color: #fca5a5;
 }
 
+.lip-sync-playback-controls {
+  margin-top: 9px;
+}
+
+.lip-sync-time {
+  align-items: baseline;
+  background: #0f172a;
+  border-radius: 7px;
+  display: flex;
+  gap: 8px;
+  margin-top: 11px;
+  padding: 9px;
+}
+
+.lip-sync-time strong {
+  color: #bfdbfe;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 18px;
+}
+
+.lip-sync-time span {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.lip-sync-details,
+.lip-sync-validation {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 9px;
+}
+
+.lip-sync-details div,
+.lip-sync-validation div {
+  background: #0f172a;
+  border-radius: 6px;
+  min-width: 0;
+  padding: 7px;
+}
+
+.lip-sync-details span,
+.lip-sync-validation span {
+  color: #94a3b8;
+  display: block;
+  font-size: 10px;
+}
+
+.lip-sync-details strong,
+.lip-sync-validation strong {
+  display: block;
+  font-size: 11px;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lip-sync-weights {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 9px;
+}
+
+.lip-sync-weights div {
+  background: #0f172a;
+  border-radius: 6px;
+  padding: 6px;
+  text-align: center;
+}
+
+.lip-sync-weights strong {
+  display: block;
+  font-size: 12px;
+  margin: 2px 0 4px;
+}
+
+.lip-sync-weights meter {
+  height: 5px;
+  width: 100%;
+}
+
+.interpolation-presets {
+  margin-top: 7px;
+}
+
 @media (max-width: 620px) {
   .toggle-grid,
   .state-grid {

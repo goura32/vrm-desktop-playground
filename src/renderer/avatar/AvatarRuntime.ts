@@ -1,6 +1,9 @@
 import { VRMUtils } from '@pixiv/three-vrm';
 import type { VRM } from '@pixiv/three-vrm';
 import type { AvatarCommand, AvatarStatus, Capability, MotionMode, VrmModelInfo } from '../../shared/types';
+import { createInitialLipSyncStatus } from '../../shared/lipsync';
+import { AudioClock } from './lipsync/AudioClock';
+import { LipSyncController } from './lipsync/LipSyncController';
 import { ExpressionController } from '../vrm/ExpressionController';
 import { LookAtController } from '../vrm/LookAtController';
 import { MotionController } from '../vrm/MotionController';
@@ -32,6 +35,7 @@ const EMPTY_STATUS: AvatarStatus = {
   manualBlink: false,
   lookAt: true,
   characterPosition: { ...DEFAULT_CHARACTER_POSITION },
+  lipSync: createInitialLipSyncStatus(),
 };
 
 function errorMessage(error: unknown): string {
@@ -40,6 +44,8 @@ function errorMessage(error: unknown): string {
 
 export class AvatarRuntime {
   private readonly sceneController: SceneController;
+  private readonly audioClock = new AudioClock();
+  private readonly lipSyncController: LipSyncController;
   private readonly onStatus: (status: AvatarStatus) => void;
   private status = EMPTY_STATUS;
   private vrm: VRM | null = null;
@@ -50,6 +56,8 @@ export class AvatarRuntime {
   private lookAtEnabled = true;
   private modelLoadRequestId = 0;
   private motionLoadRequestId = 0;
+  private audioLoadRequestId = 0;
+  private timelineLoadRequestId = 0;
   private modelLoading = false;
   private motionLoading = false;
   private idleMotionId: string | null = null;
@@ -65,6 +73,11 @@ export class AvatarRuntime {
   public constructor(canvas: HTMLCanvasElement, onStatus: (status: AvatarStatus) => void) {
     this.sceneController = new SceneController(canvas);
     this.onStatus = onStatus;
+    this.lipSyncController = new LipSyncController({
+      clock: this.audioClock,
+      applyMouthWeights: (weights) => this.expressionController?.applyMouthWeights(weights) ?? 5,
+      onStatus: (lipSync) => this.publish({ lipSync }),
+    });
     this.sceneController.start((delta) => this.update(delta));
   }
 
@@ -74,6 +87,27 @@ export class AvatarRuntime {
 
   public handleCommand(command: AvatarCommand): void {
     switch (command.type) {
+      case 'load-audio':
+        void this.loadAudio(command.file.name, command.file.data);
+        break;
+      case 'load-lipsync-timeline':
+        void this.loadLipSyncTimeline(command.file.name, command.file.data);
+        break;
+      case 'lipsync-play':
+        this.lipSyncController.play();
+        break;
+      case 'lipsync-pause':
+        this.lipSyncController.pause();
+        break;
+      case 'lipsync-resume':
+        this.lipSyncController.resume();
+        break;
+      case 'lipsync-stop':
+        this.lipSyncController.stop();
+        break;
+      case 'lipsync-set-interpolation':
+        this.lipSyncController.setInterpolation(command.milliseconds);
+        break;
       case 'load-vrm':
         void this.loadVrm(command.file.name, command.file.data);
         break;
@@ -147,9 +181,12 @@ export class AvatarRuntime {
   public dispose(): void {
     this.modelLoadRequestId += 1;
     this.motionLoadRequestId += 1;
+    this.audioLoadRequestId += 1;
+    this.timelineLoadRequestId += 1;
     this.modelLoading = false;
     this.motionLoading = false;
     this.suppressedGestureCompletion = null;
+    this.lipSyncController.stop();
     this.motionController?.dispose();
     this.lookAtController?.dispose();
     if (this.vrm) {
@@ -157,10 +194,56 @@ export class AvatarRuntime {
       VRMUtils.deepDispose(this.vrm.scene);
     }
     this.sceneController.dispose();
+    void this.audioClock.dispose();
+  }
+
+  private async loadAudio(fileName: string, data: ArrayBuffer): Promise<void> {
+    const requestId = ++this.audioLoadRequestId;
+    this.lipSyncController.stop();
+    this.publish({
+      lipSync: { ...this.status.lipSync, state: 'loading', currentTime: 0, message: `Decoding lip-sync audio: ${fileName}` },
+    });
+    try {
+      const duration = await this.audioClock.load(data);
+      if (requestId !== this.audioLoadRequestId) {
+        return;
+      }
+      this.lipSyncController.setAudioDuration(duration);
+    } catch (error) {
+      if (requestId !== this.audioLoadRequestId) {
+        return;
+      }
+      this.publish({
+        lipSync: { ...this.status.lipSync, state: 'error', message: `Audio load failed: ${errorMessage(error)}` },
+      });
+    }
+  }
+
+  private async loadLipSyncTimeline(fileName: string, data: ArrayBuffer): Promise<void> {
+    const requestId = ++this.timelineLoadRequestId;
+    this.publish({
+      lipSync: { ...this.status.lipSync, state: 'loading', message: `Loading LipSyncTimeline: ${fileName}` },
+    });
+    try {
+      const text = new TextDecoder().decode(data);
+      const parsed: unknown = JSON.parse(text);
+      if (requestId !== this.timelineLoadRequestId) {
+        return;
+      }
+      this.lipSyncController.setTimeline(parsed);
+    } catch (error) {
+      if (requestId !== this.timelineLoadRequestId) {
+        return;
+      }
+      this.publish({
+        lipSync: { ...this.status.lipSync, state: 'error', message: `Timeline load failed: ${errorMessage(error)}` },
+      });
+    }
   }
 
   private async loadVrm(fileName: string, data: ArrayBuffer): Promise<void> {
     const requestId = ++this.modelLoadRequestId;
+    this.lipSyncController.stop();
     this.motionLoadRequestId += 1;
     this.modelLoading = true;
     this.motionLoading = false;
@@ -411,6 +494,7 @@ export class AvatarRuntime {
 
   private update(delta: number): void {
     this.expressionController?.update(delta);
+    this.lipSyncController.update();
     const controller = this.motionController;
     const vrm = this.vrm;
     const modelRequestId = this.modelLoadRequestId;
@@ -515,6 +599,7 @@ export class AvatarRuntime {
       humanoidBones,
       expressions: this.expressionController.expressionInfos,
       capabilities,
+      mouthOverride: this.expressionController.mouthOverride,
     };
   }
 
@@ -525,5 +610,5 @@ export class AvatarRuntime {
 }
 
 export function getInitialAvatarStatus(): AvatarStatus {
-  return { ...EMPTY_STATUS, characterPosition: { ...EMPTY_STATUS.characterPosition } };
+  return { ...EMPTY_STATUS, characterPosition: { ...EMPTY_STATUS.characterPosition }, lipSync: createInitialLipSyncStatus() };
 }

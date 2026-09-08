@@ -1,9 +1,10 @@
 import type { VRM } from '@pixiv/three-vrm';
-import type { ExpressionInfo } from '../../shared/types';
+import type { MouthWeights } from '../../shared/lipsync';
+import { VRM_MOUTH_EXPRESSIONS } from '../../shared/lipsync';
+import type { ExpressionInfo, VrmMouthOverride } from '../../shared/types';
 import { buildExpressionInfos } from './vrmModelInfo';
 
 const BLINK_EXPRESSIONS = ['blink', 'blinkLeft', 'blinkRight'];
-const MOUTH_EXPRESSIONS = ['aa', 'ih', 'ou', 'ee', 'oh'];
 
 function clamp(value: number): number {
   return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
@@ -78,9 +79,36 @@ export class ExpressionController {
     return true;
   }
 
-  public setMouthPreset(name: string): boolean {
-    return MOUTH_EXPRESSIONS.includes(name) && this.setValue(name, 1);
+  public applyMouthWeights(weights: MouthWeights): number {
+    let missingExpressions = 0;
+    for (const mouth of VRM_MOUTH_EXPRESSIONS) {
+      if (!this.setValue(mouth, weights[mouth])) {
+        missingExpressions += 1;
+      }
+    }
+    return missingExpressions;
   }
+
+  public get mouthOverride(): VrmMouthOverride {
+    const manager = this.vrm.expressionManager;
+    if (!manager) {
+      return 'unknown';
+    }
+    let hasBlend = false;
+    for (const expression of manager.expressions) {
+      if ((expression.weight ?? 0) <= 0) {
+        continue;
+      }
+      if (expression.overrideMouth === 'block') {
+        return 'block';
+      }
+      if (expression.overrideMouth === 'blend') {
+        hasBlend = true;
+      }
+    }
+    return hasBlend ? 'blend' : 'none';
+  }
+
 
   public update(delta: number): void {
     if (this.blinkRemaining > 0) {

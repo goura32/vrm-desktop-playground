@@ -129,7 +129,33 @@ OS 上で背面 X11 window に click が届くことの自動確認は BLOCKED�
 
 ## 既知の制約
 
-native Wayland は受入対象外で、Xwayland 経路を標準とします。`--no-sandbox` はこの PoC 実行環境で setuid sandbox helper を利用できないための開発用条件であり、本番配布設定ではありません。リップシンク、LLM/TTS/STT、複数キャラクター、インストーラー、自動更新、クラウド同期は PoC 対象外です。
+native Wayland は受入対象外で、Xwayland 経路を標準とします。`--no-sandbox` はこの PoC 実行環境で setuid sandbox helper を利用できないための開発用条件であり、本番配布設定ではありません。複数キャラクター、インストーラー、自動更新、クラウド同期は PoC 対象外です。
+
+## Phase 9 Qwen3-TTS + MFA lip-sync acceptance
+
+検証日時: 2026-09-08 (JST)
+
+### Preprocessing evidence
+
+- Qwen3-TTS `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice`, revision `85e237c12c027371202489a0ec509ded67b5e4b5`, speaker `ono_anna` を dedicated Python 3.11 venvでロードし、JP/EN/ZH WAVを生成。リポジトリ内スモーク生成も `qwen-script-smoke.wav` (24 kHz, 3.68 s) で終了コード0。
+- MFA `mmcauliffe/montreal-forced-aligner:latest` (MFA `3.4.3.dev0+gd2dc283bd.d20260820`) をDocker実行。`japanese_mfa`, `english_mfa`, `mandarin_mfa` の3言語をJSON出力し、`JP01.json`, `EN01.json`, `ZH01.json` の phone tierを確認。wrapper経由のEnglish alignmentも1 utterance / 21.242 s / exit 0。
+- `build_timeline.py` でJP/EN/ZHと30秒超 soak用timelineを生成。全出力は `/home/ws1/.cache/vrm-phase9-*` 配下で、Gitには入れていない。
+
+### Acceptance matrix
+
+| 条件 | 結果 | 根拠 |
+|---|---|---|
+| VRM 1.0標準5口形のみ | PASS | TypeScript/Python mapper、timeline validator、runtime UIが `aa/ih/ou/ee/oh` に限定。 |
+| JP/EN/ZH | PASS | 3言語のQwen/MFA実データtimelineを生成し、phones→weights分布を確認。MFAの`aj/aw/ow/ɔj`も明示処理。 |
+| 音声クロック同期 | PASS | `AudioClock.currentTime`を唯一の再生基準にし、render elapsedでは進めない。play/pause/resume/stop/replayをテスト。 |
+| 同期ログ・validation | PASS | cue latency p50/p95/max、signed end/cumulative drift、frame/refresh/dropped/late、invalid/missing/stuck、mouth distributionをDebugとmain logへ出力。 |
+| 補間比較 | PASS | 0/40/70/100 msをDebugプリセットと`interpolation_report.py`で比較。 |
+| 30秒以上drift | PASS | `lipsync-long-soak.test.ts` が37.04 sを60 Hz相当で2,223 frame再生し、60 Hz推定・end drift 0 ms・cumulative drift 0 msを確認。 |
+| 回帰・build・security | PASS | lint/typecheck/full Vitest/build/auditを最終回帰で再実行。Electron sandbox/contextIsolation/preload IPCと拡張子・サイズ検証を維持。 |
+| Computer Use実画面 | PASS | Electron Avatar/Debug 2窓を実起動し、Computer UseでAvatarのVRM画面とDebugのready/Window probe/Assets UIをcapture確認。実画面の追加入力は既存方針どおりキーボード経路のみ。 |
+| cleanup / git clean | PASS | generated WAV/JSON/logsは外部cache、作業treeにはソース/docs/testsのみ。final `git clean -ndX/-nd`で生成物なしを確認。 |
+
+補間の既定値は `70 ms`。0 msは口形遷移が鋭く、100 msは短い音素を過度に平滑化するため、cue latencyと視認性の妥協点として採用した。実機のGPU/ディスプレイ差はDebugのrefresh/dropped/late値で確認する。
 
 ## 08 DESKTOP CHARACTER BEHAVIOR
 

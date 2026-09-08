@@ -1,3 +1,4 @@
+import type { LipSyncStatus } from './lipsync';
 import type { WindowStateSnapshot } from './windowState';
 import type { BundledAssetId } from './bundledAssets';
 
@@ -11,6 +12,7 @@ export type Capability =
   | 'vrma';
 
 export type CapabilityStatus = 'available' | 'unsupported';
+export type VrmMouthOverride = 'none' | 'blend' | 'block' | 'unknown';
 
 export interface ExpressionInfo {
   name: string;
@@ -26,6 +28,7 @@ export interface VrmModelInfo {
   humanoidBones: string[];
   expressions: ExpressionInfo[];
   capabilities: Record<Capability, CapabilityStatus>;
+  mouthOverride: VrmMouthOverride;
 }
 
 export interface MotionInfo {
@@ -61,6 +64,7 @@ export interface AvatarStatus {
   manualBlink: boolean;
   lookAt: boolean;
   characterPosition: CharacterPosition;
+  lipSync: LipSyncStatus;
 }
 
 export interface FilePayload {
@@ -71,6 +75,13 @@ export interface FilePayload {
 export type AvatarCommand =
   | { type: 'load-vrm'; file: FilePayload }
   | { type: 'load-vrma'; file: FilePayload }
+  | { type: 'load-audio'; file: FilePayload }
+  | { type: 'load-lipsync-timeline'; file: FilePayload }
+  | { type: 'lipsync-play' }
+  | { type: 'lipsync-pause' }
+  | { type: 'lipsync-resume' }
+  | { type: 'lipsync-stop' }
+  | { type: 'lipsync-set-interpolation'; milliseconds: number }
   | { type: 'set-expression'; name: string; value: number }
   | { type: 'reset-expressions' }
   | { type: 'set-auto-blink'; enabled: boolean }
@@ -93,8 +104,12 @@ export interface VrmDesktopApi {
   setAlwaysOnTop(enabled: boolean): Promise<WindowStateSnapshot>;
   openVrmDialog(): Promise<boolean>;
   openVrmaDialog(): Promise<boolean>;
+  openAudioDialog(): Promise<boolean>;
+  openLipSyncTimelineDialog(): Promise<boolean>;
   loadVrmFile(file: FilePayload): Promise<boolean>;
   loadVrmaFile(file: FilePayload): Promise<boolean>;
+  loadAudioFile(file: FilePayload): Promise<boolean>;
+  loadLipSyncTimelineFile(file: FilePayload): Promise<boolean>;
   loadBundledAsset(assetId: BundledAssetId): Promise<boolean>;
   onWindowState(listener: (state: WindowStateSnapshot) => void): () => void;
   onAvatarStatus(listener: (status: AvatarStatus) => void): () => void;

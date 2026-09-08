@@ -45,3 +45,16 @@ Missing optional VRM capabilities are represented as `unsupported` in the Debug 
 `assets/manifest.json` records source URL, download URL where applicable, author, license, redistribution decision, credit requirement, checksum, and blocked candidates. Only obtained, license-reviewed public samples are committed. VRoid Hub and BOOTH candidates that require current terms, login, consent, or purchase checks remain `BLOCKED_ASSET` with no file path or checksum.
 
 See [`../assets/README.md`](../assets/README.md) and [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
+
+## Phase 9: Qwen3-TTS / MFA lip-sync path
+
+The Phase 9 pipeline is deliberately split from the Electron/npm graph:
+
+1. `generate_qwen_audio.py` runs `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` in a dedicated Python environment and writes WAV only outside the repository. The accepted sample set uses the pinned model revision `85e237c12c027371202489a0ec509ded67b5e4b5` and the same `ono_anna` voice for Japanese, English, and Chinese.
+2. `align_mfa.sh` runs Montreal Forced Aligner in `mmcauliffe/montreal-forced-aligner:latest` Docker with the pinned language models `japanese_mfa`, `english_mfa`, and `mandarin_mfa`. The host cache is mounted at the image's `/mfa` root; no MFA or Qwen runtime is imported by the Electron build.
+3. `build_timeline.py` converts MFA JSON phone tiers into a versioned `LipSyncTimeline` JSON. It preserves source language, audio duration, aligner metadata, phone labels, and the five VRM 1.0 mouth expressions only: `aa`, `ih`, `ou`, `ee`, `oh`.
+4. `LipSyncController` samples that timeline against `HTMLAudioElement`-equivalent `AudioClock.currentTime` (Web Audio `AudioBufferSourceNode` in the PoC), never against wall-clock or render-frame elapsed time. Play, pause, resume, stop, replay-after-ended, and load-generation cancellation are explicit state transitions.
+5. `ExpressionController.applyMouthWeights` applies the five weights through `VRMExpressionManager`. The manager's VRM mouth override rules remain authoritative; the model status exposes the currently active `none`/`blend`/`block`/`unknown` mode.
+6. `LipSyncDebugRecorder` records frame count, cue count, cue latency percentiles, signed duration/end drift, frame-rate estimate, dropped/late frames, invalid weights, missing expressions, mouth-stuck events, and per-mouth distribution. The main process emits a bounded cue/session log when the source phone or mouth changes and emits the final validation summary.
+
+The Debug Window exposes separate audio and timeline loaders, playback controls, interpolation presets (`0`, `40`, `70`, `100 ms`), current clock time, source phone, dominant mouth, weights, metadata, and validation telemetry. Generated WAV, MFA output, timeline JSON, and run logs are external fixtures under `/home/ws1/.cache/vrm-phase9-*`; they are never committed.

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { BUNDLED_ASSETS, getBundledAsset, isBundledAssetId } from '../shared/bundledAssets';
 import { isFilePayload, isLikelyAssetName, MAX_FILE_BYTES } from '../shared/fileValidation';
+import type { FileKind } from '../shared/fileValidation';
 import { IPC_CHANNELS } from '../shared/ipc';
 import { isAvatarCommand, isAvatarStatus } from '../shared/ipcValidation';
 import type { AvatarCommand, AvatarStatus, FilePayload } from '../shared/types';
@@ -12,6 +13,7 @@ import type { BundledAssetId } from '../shared/bundledAssets';
 import type { WindowStateSnapshot } from '../shared/windowState';
 import { createInitialWindowState } from '../shared/windowState';
 import { DEFAULT_CHARACTER_POSITION } from '../shared/scenePosition';
+import { createInitialLipSyncStatus } from '../shared/lipsync';
 import { getElectronPlatformSwitches } from './platform/linux';
 
 const DEV_SERVER_URL = 'http://127.0.0.1:5173';
@@ -19,6 +21,7 @@ let avatarWindow: BrowserWindow | null = null;
 let debugWindow: BrowserWindow | null = null;
 let windowState = createInitialWindowState();
 let lastAvatarStatus = createInitialAvatarStatus();
+let lastLipSyncLogKey = '';
 let windowLayoutInitialized = false;
 
 function log(message: string): void {
@@ -42,6 +45,7 @@ function createInitialAvatarStatus(): AvatarStatus {
     manualBlink: false,
     lookAt: true,
     characterPosition: { ...DEFAULT_CHARACTER_POSITION },
+    lipSync: createInitialLipSyncStatus(),
   };
 }
 
@@ -188,8 +192,27 @@ function broadcastWindowState(): WindowStateSnapshot {
   return windowState;
 }
 
+function logLipSyncCue(status: AvatarStatus): void {
+  const lipSync = status.lipSync;
+  const validation = lipSync.validation;
+  const baseKey = `${lipSync.state}|${lipSync.testId ?? ''}|${lipSync.sourcePhone ?? ''}|${lipSync.dominantMouth ?? ''}`;
+  const key = lipSync.state === 'playing'
+    ? baseKey
+    : `${baseKey}|${validation.frameCount}|${validation.endDriftMs ?? ''}`;
+  if (key === lastLipSyncLogKey) {
+    return;
+  }
+  lastLipSyncLogKey = key;
+  if (lipSync.state === 'playing') {
+    log(`lip-sync cue: test=${lipSync.testId ?? 'unknown'} language=${lipSync.language ?? 'unknown'} audio_time=${lipSync.currentTime.toFixed(3)} phone=${lipSync.sourcePhone ?? 'sil'} dominant=${lipSync.dominantMouth ?? 'closed'} weights=${JSON.stringify(lipSync.weights)}`);
+  } else if (lipSync.state === 'stopped' || lipSync.state === 'error') {
+    log(`lip-sync summary: test=${lipSync.testId ?? 'unknown'} state=${lipSync.state} duration_delta_ms=${validation.durationDeltaMs ?? 'n/a'} p50_ms=${validation.cueLatencyP50Ms ?? 'n/a'} p95_ms=${validation.cueLatencyP95Ms ?? 'n/a'} max_ms=${validation.cueLatencyMaxMs ?? 'n/a'} end_drift_ms=${validation.endDriftMs ?? 'n/a'} cumulative_drift_ms=${validation.cumulativeDriftMs} stuck=${validation.mouthStuckEventCount} invalid=${validation.invalidWeightCount} missing=${validation.missingExpressionCount} dropped=${validation.droppedFrameCount} late=${validation.lateFrameCount} mouth_distribution=${JSON.stringify(validation.mouthDistribution)}`);
+  }
+}
+
 function broadcastAvatarStatus(status: AvatarStatus): void {
   lastAvatarStatus = status;
+  logLipSyncCue(status);
   log(`avatar status: ${status.phase} — ${status.message}`);
   if (debugWindow && !debugWindow.isDestroyed()) {
     debugWindow.webContents.send(IPC_CHANNELS.avatarStatus, status);
@@ -225,26 +248,41 @@ async function readBundledAsset(assetId: BundledAssetId): Promise<FilePayload> {
   throw new Error(`Bundled asset “${descriptor.displayName}” is not available.`);
 }
 
-async function routeFile(kind: 'vrm' | 'vrma', file: FilePayload): Promise<boolean> {
+async function routeFile(kind: FileKind, file: FilePayload): Promise<boolean> {
   if (!isFilePayload(file) || !isLikelyAssetName(file.name, kind)) {
     broadcastAvatarStatus({
       ...lastAvatarStatus,
       phase: 'error',
-      message: `Rejected ${kind.toUpperCase()} file: expected a safe .${kind} filename and a valid, bounded payload.`,
+      message: `Rejected ${kind.toUpperCase()} file: expected a safe filename and a valid, bounded payload.`,
     });
     return false;
   }
 
-  sendAvatarCommand({ type: kind === 'vrm' ? 'load-vrm' : 'load-vrma', file });
+  if (kind === 'vrm') {
+    sendAvatarCommand({ type: 'load-vrm', file });
+  } else if (kind === 'vrma') {
+    sendAvatarCommand({ type: 'load-vrma', file });
+  } else if (kind === 'audio') {
+    sendAvatarCommand({ type: 'load-audio', file });
+  } else {
+    sendAvatarCommand({ type: 'load-lipsync-timeline', file });
+  }
   return true;
 }
 
-async function chooseAndRouteFile(kind: 'vrm' | 'vrma'): Promise<boolean> {
+async function chooseAndRouteFile(kind: FileKind): Promise<boolean> {
   const owner = debugWindow && !debugWindow.isDestroyed() ? debugWindow : undefined;
+  const labels: Record<FileKind, { title: string; name: string; extensions: string[] }> = {
+    vrm: { title: 'Open VRM 1.0 model', name: 'VRM model', extensions: ['vrm'] },
+    vrma: { title: 'Open VRMA motion', name: 'VRMA motion', extensions: ['vrma'] },
+    audio: { title: 'Open lip-sync audio', name: 'Audio', extensions: ['wav', 'mp3', 'ogg', 'm4a', 'webm'] },
+    timeline: { title: 'Open LipSyncTimeline JSON', name: 'LipSyncTimeline', extensions: ['json'] },
+  };
+  const label = labels[kind];
   const options: OpenDialogOptions = {
-    title: kind === 'vrm' ? 'Open VRM 1.0 model' : 'Open VRMA motion',
+    title: label.title,
     properties: ['openFile'],
-    filters: [{ name: kind === 'vrm' ? 'VRM model' : 'VRMA motion', extensions: [kind] }],
+    filters: [{ name: label.name, extensions: label.extensions }],
   };
   const result = owner
     ? await dialog.showOpenDialog(owner, options)
@@ -319,6 +357,20 @@ function registerIpcHandlers(): void {
     }
     return chooseAndRouteFile('vrma');
   });
+  ipcMain.handle(IPC_CHANNELS.openAudioDialog, (event: IpcMainInvokeEvent) => {
+    if (!isDebugSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.openAudioDialog);
+      return false;
+    }
+    return chooseAndRouteFile('audio');
+  });
+  ipcMain.handle(IPC_CHANNELS.openLipSyncTimelineDialog, (event: IpcMainInvokeEvent) => {
+    if (!isDebugSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.openLipSyncTimelineDialog);
+      return false;
+    }
+    return chooseAndRouteFile('timeline');
+  });
   ipcMain.handle(IPC_CHANNELS.loadVrmFile, (event: IpcMainInvokeEvent, file: FilePayload) => {
     if (!isDebugSender(event)) {
       rejectIpcSender(IPC_CHANNELS.loadVrmFile);
@@ -332,6 +384,20 @@ function registerIpcHandlers(): void {
       return false;
     }
     return routeFile('vrma', file);
+  });
+  ipcMain.handle(IPC_CHANNELS.loadAudioFile, (event: IpcMainInvokeEvent, file: FilePayload) => {
+    if (!isDebugSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.loadAudioFile);
+      return false;
+    }
+    return routeFile('audio', file);
+  });
+  ipcMain.handle(IPC_CHANNELS.loadLipSyncTimelineFile, (event: IpcMainInvokeEvent, file: FilePayload) => {
+    if (!isDebugSender(event)) {
+      rejectIpcSender(IPC_CHANNELS.loadLipSyncTimelineFile);
+      return false;
+    }
+    return routeFile('timeline', file);
   });
   ipcMain.handle(IPC_CHANNELS.loadBundledAsset, async (event: IpcMainInvokeEvent, assetId: BundledAssetId) => {
     if (!isDebugSender(event) && !isAvatarSender(event)) {

@@ -9,8 +9,12 @@ const api: VrmDesktopApi = {
   setAlwaysOnTop: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.setAlwaysOnTop, enabled),
   openVrmDialog: () => ipcRenderer.invoke(IPC_CHANNELS.openVrmDialog),
   openVrmaDialog: () => ipcRenderer.invoke(IPC_CHANNELS.openVrmaDialog),
+  openAudioDialog: () => ipcRenderer.invoke(IPC_CHANNELS.openAudioDialog),
+  openLipSyncTimelineDialog: () => ipcRenderer.invoke(IPC_CHANNELS.openLipSyncTimelineDialog),
   loadVrmFile: (file: FilePayload) => ipcRenderer.invoke(IPC_CHANNELS.loadVrmFile, file),
   loadVrmaFile: (file: FilePayload) => ipcRenderer.invoke(IPC_CHANNELS.loadVrmaFile, file),
+  loadAudioFile: (file: FilePayload) => ipcRenderer.invoke(IPC_CHANNELS.loadAudioFile, file),
+  loadLipSyncTimelineFile: (file: FilePayload) => ipcRenderer.invoke(IPC_CHANNELS.loadLipSyncTimelineFile, file),
   loadBundledAsset: (kind) => ipcRenderer.invoke(IPC_CHANNELS.loadBundledAsset, kind),
   onWindowState: (listener) => {
     const handler = (_event: IpcRendererEvent, state: WindowStateSnapshot) => listener(state);

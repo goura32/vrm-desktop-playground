@@ -2,8 +2,20 @@ import type { FilePayload } from './types';
 
 export const MAX_FILE_BYTES = 250 * 1024 * 1024;
 
-export function isLikelyAssetName(name: string, kind: 'vrm' | 'vrma'): boolean {
-  return /^[^/\\]+\.(vrm|vrma)$/i.test(name) && name.toLowerCase().endsWith(`.${kind}`);
+export type FileKind = 'vrm' | 'vrma' | 'audio' | 'timeline';
+
+export function isLikelyAssetName(name: string, kind: FileKind): boolean {
+  if (!/^[^/\\]+\.[a-z0-9]+$/i.test(name)) {
+    return false;
+  }
+  const extension = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
+  if (kind === 'vrm' || kind === 'vrma') {
+    return extension === kind;
+  }
+  if (kind === 'audio') {
+    return ['wav', 'mp3', 'ogg', 'm4a', 'webm'].includes(extension);
+  }
+  return extension === 'json';
 }
 
 export function isFilePayload(value: unknown, maxBytes = MAX_FILE_BYTES): value is FilePayload {

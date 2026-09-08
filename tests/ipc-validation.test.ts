@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createInitialLipSyncStatus } from '../src/shared/lipsync';
 import { isAvatarCommand, isAvatarStatus } from '../src/shared/ipcValidation';
 
 describe('IPC runtime validation', () => {
@@ -13,6 +14,9 @@ describe('IPC runtime validation', () => {
     expect(isAvatarCommand({ type: 'move-character', direction: 'diagonal', step: 0.05 })).toBe(false);
     expect(isAvatarCommand({ type: 'move-character', direction: 'right', step: 2 })).toBe(false);
     expect(isAvatarCommand({ type: 'load-vrm', file: { name: 'character.vrm', data: new ArrayBuffer(1) } })).toBe(true);
+    expect(isAvatarCommand({ type: 'load-audio', file: { name: 'voice.wav', data: new ArrayBuffer(1) } })).toBe(true);
+    expect(isAvatarCommand({ type: 'load-lipsync-timeline', file: { name: 'voice.json', data: new ArrayBuffer(1) } })).toBe(true);
+    expect(isAvatarCommand({ type: 'lipsync-set-interpolation', milliseconds: 70 })).toBe(true);
     expect(isAvatarCommand({ type: 'load-vrm', file: { name: 'character.txt', data: new ArrayBuffer(1) } })).toBe(false);
     expect(isAvatarCommand({ type: 'set-expression', name: 'happy', value: Number.NaN })).toBe(false);
     expect(isAvatarCommand({ type: 'unknown-command' })).toBe(false);
@@ -35,10 +39,12 @@ describe('IPC runtime validation', () => {
       manualBlink: false,
       lookAt: true,
       characterPosition: { x: 0.5, y: 0.5 },
+      lipSync: createInitialLipSyncStatus(),
     };
     expect(isAvatarStatus(status)).toBe(true);
     expect(isAvatarStatus({ ...status, speed: 99 })).toBe(false);
     expect(isAvatarStatus({ ...status, phase: 'broken' })).toBe(false);
     expect(isAvatarStatus({ ...status, characterPosition: { x: -1, y: 0.5 } })).toBe(false);
+    expect(isAvatarStatus({ ...status, lipSync: { ...status.lipSync, weights: { ...status.lipSync.weights, extra: 0 } } })).toBe(false);
   });
 });

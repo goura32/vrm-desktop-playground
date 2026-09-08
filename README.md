@@ -35,6 +35,13 @@ npm run build
 
 自動テストと実アプリ起動を組み合わせます。Computer Use は画面キャプチャ、ウィンドウ認識、キーボード操作、目視確認だけに使い、マウスクリック・ドラッグには依存しません。Click Through の背面受信確認は環境依存のため、OS自動確認ができない場合はmanual verification requiredとして記録します。
 
-native Wayland は今回の受入対象外です。リップシンク、LLM/TTS/STT、複数キャラクター、インストーラー、自動アップデート、クラウド同期も対象外です。`--no-sandbox` はこの PoC の Ubuntu 実行環境で Electron の setuid sandbox helper を利用できないための開発用起動条件であり、本番配布向け設定ではありません。
+## Phase 9 lip-sync PoC
+
+`Open audio` and `Open lip-sync timeline` in the Debug Window load external WAV and MFA-derived JSON. Playback is driven by the decoded audio clock; `Play`, `Pause`, `Resume`, `Stop`, replay-after-ended, and interpolation presets are available. The Debug Window reports source phone, dominant VRM mouth, model mouth override mode, cue latency, signed drift, refresh estimate, dropped/late frames, and validation counts.
+
+Qwen3-TTS/MFA preprocessing stays outside the npm graph. Follow [`scripts/lipsync/README.md`](scripts/lipsync/README.md) to generate JP/EN/ZH WAVs with the pinned Qwen revision, align them with MFA Docker, and build timelines. Generated artifacts belong under `/home/ws1/.cache/vrm-phase9-*`, not in Git.
+
+native Wayland は今回の受入対象外です。複数キャラクター、インストーラー、自動アップデート、クラウド同期も対象外です。`--no-sandbox` はこの PoC の Ubuntu 実行環境で Electron の setuid sandbox helper を利用できないための開発用起動条件であり、本番配布向け設定ではありません。
+
 
 実装の境界は [`docs/architecture.md`](docs/architecture.md)、最終検証記録は [`docs/test-results.md`](docs/test-results.md) を参照してください。

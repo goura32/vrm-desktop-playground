@@ -6,12 +6,15 @@ import type {
   MotionInfo,
   VrmModelInfo,
 } from './types';
+import type { LipSyncStatus, VrmMouth } from './lipsync';
+import { VRM_MOUTH_EXPRESSIONS } from './lipsync';
 import { isFilePayload, isLikelyAssetName } from './fileValidation';
 
 const CAPABILITY_NAMES = ['humanoid', 'presetExpressions', 'customExpressions', 'blink', 'lookAt', 'springBone', 'vrma'] as const;
 const AVATAR_PHASES = ['idle', 'loading', 'ready', 'error'] as const;
 const MOTION_PLAYBACKS = ['stopped', 'playing', 'paused'] as const;
 const MOTION_MODES = ['idle', 'gesture', 'stopped'] as const;
+const LIP_SYNC_STATES = ['idle', 'loading', 'ready', 'playing', 'paused', 'stopped', 'error'] as const;
 const MOVE_DIRECTIONS = ['up', 'down', 'left', 'right'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -74,7 +77,63 @@ function isVrmModelInfo(value: unknown): value is VrmModelInfo {
   if (!isRecord(capabilities)) {
     return false;
   }
-  return CAPABILITY_NAMES.every((name) => capabilities[name] === 'available' || capabilities[name] === 'unsupported');
+  return CAPABILITY_NAMES.every((name) => capabilities[name] === 'available' || capabilities[name] === 'unsupported') &&
+    (value.mouthOverride === 'none' || value.mouthOverride === 'blend' || value.mouthOverride === 'block' || value.mouthOverride === 'unknown');
+}
+
+function isLipSyncWeights(value: unknown): value is Record<VrmMouth, number> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Object.keys(value).length === VRM_MOUTH_EXPRESSIONS.length &&
+    VRM_MOUTH_EXPRESSIONS.every((mouth) => isFiniteNumber(value[mouth]) && value[mouth] >= 0 && value[mouth] <= 1);
+}
+
+function isMouthDistribution(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Object.keys(value).length === VRM_MOUTH_EXPRESSIONS.length &&
+    VRM_MOUTH_EXPRESSIONS.every((mouth) => isFiniteNumber(value[mouth]) && value[mouth] >= 0);
+}
+
+function isLipSyncValidation(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const requiredNumbers = ['frameCount', 'cueCount', 'droppedFrameCount', 'invalidWeightCount', 'mouthStuckEventCount', 'missingExpressionCount'];
+  if (!requiredNumbers.every((name) => isFiniteNumber(value[name]) && value[name] >= 0)) {
+    return false;
+  }
+  if (!isFiniteNumber(value.cumulativeDriftMs) || !isFiniteNumber(value.lateFrameCount) || value.lateFrameCount < 0) {
+    return false;
+  }
+  const nullableNonNegativeNumbers = ['cueLatencyP50Ms', 'cueLatencyP95Ms', 'cueLatencyMaxMs', 'startOffsetMs'];
+  if (!nullableNonNegativeNumbers.every((name) => value[name] === null || (isFiniteNumber(value[name]) && value[name] >= 0))) {
+    return false;
+  }
+  return ['endDriftMs', 'durationDeltaMs'].every((name) => value[name] === null || isFiniteNumber(value[name])) &&
+    (value.displayRefreshEstimateHz === null || (isFiniteNumber(value.displayRefreshEstimateHz) && value.displayRefreshEstimateHz > 0)) &&
+    isMouthDistribution(value.mouthDistribution);
+}
+
+function isLipSyncStatus(value: unknown): value is LipSyncStatus {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return typeof value.state === 'string' && LIP_SYNC_STATES.includes(value.state as (typeof LIP_SYNC_STATES)[number]) &&
+    typeof value.message === 'string' && value.message.length <= 1000 &&
+    isFiniteNumber(value.currentTime) && value.currentTime >= 0 &&
+    (value.audioDuration === null || (isFiniteNumber(value.audioDuration) && value.audioDuration > 0)) &&
+    (value.timelineDuration === null || (isFiniteNumber(value.timelineDuration) && value.timelineDuration > 0)) &&
+    (value.testId === null || (typeof value.testId === 'string' && value.testId.length <= 128)) &&
+    (value.language === null || (typeof value.language === 'string' && value.language.length <= 64)) &&
+    (value.sourcePhone === null || (typeof value.sourcePhone === 'string' && value.sourcePhone.length <= 64)) &&
+    (value.dominantMouth === null || VRM_MOUTH_EXPRESSIONS.includes(value.dominantMouth as VrmMouth)) &&
+    isLipSyncWeights(value.weights) && isFiniteNumber(value.interpolationMs) && value.interpolationMs >= 0 && value.interpolationMs <= 1000 &&
+    (value.aligner === null || (typeof value.aligner === 'string' && value.aligner.length <= 128)) &&
+    (value.alignerVersion === null || (typeof value.alignerVersion === 'string' && value.alignerVersion.length <= 128)) &&
+    isLipSyncValidation(value.validation);
 }
 
 export function isAvatarCommand(value: unknown): value is AvatarCommand {
@@ -87,6 +146,17 @@ export function isAvatarCommand(value: unknown): value is AvatarCommand {
       return isFilePayload(value.file) && isLikelyAssetName(value.file.name, 'vrm');
     case 'load-vrma':
       return isFilePayload(value.file) && isLikelyAssetName(value.file.name, 'vrma');
+    case 'load-audio':
+      return isFilePayload(value.file) && isLikelyAssetName(value.file.name, 'audio');
+    case 'load-lipsync-timeline':
+      return isFilePayload(value.file) && isLikelyAssetName(value.file.name, 'timeline');
+    case 'lipsync-play':
+    case 'lipsync-pause':
+    case 'lipsync-resume':
+    case 'lipsync-stop':
+      return true;
+    case 'lipsync-set-interpolation':
+      return isFiniteNumber(value.milliseconds) && value.milliseconds >= 0 && value.milliseconds <= 1000;
     case 'set-expression':
       return isBoundedString(value.name) && isFiniteNumber(value.value);
     case 'reset-expressions':
@@ -136,6 +206,7 @@ export function isAvatarStatus(value: unknown): value is AvatarStatus {
     isBoolean(value.autoBlink) &&
     isBoolean(value.manualBlink) &&
     isBoolean(value.lookAt) &&
-    isCharacterPosition(value.characterPosition)
+    isCharacterPosition(value.characterPosition) &&
+    isLipSyncStatus(value.lipSync)
   );
 }
