@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import type { AvatarStatus } from '../../shared/types';
 import type { BundledAssetId } from '../../shared/bundledAssets';
 import { AvatarRuntime, getInitialAvatarStatus } from './AvatarRuntime';
+import { createLipSyncReportGate, shouldReportLipSyncStatus } from './lipsync/LipSyncStatusReporter';
 import { shouldStartAutomaticIdle } from '../vrm/motionModel';
 import './styles.css';
 
@@ -28,9 +29,12 @@ export function AvatarWindow(): ReactElement {
     let bundledMotionModel: string | null = null;
     let requestedMotionAssets = new Set<BundledAssetId>();
     let automaticIdleStarted = false;
+    const lipSyncReportGate = createLipSyncReportGate();
     const runtime = new AvatarRuntime(canvas, (nextStatus) => {
-      setStatus(nextStatus);
-      api.reportAvatarStatus(nextStatus);
+      if (shouldReportLipSyncStatus(nextStatus.lipSync, lipSyncReportGate)) {
+        setStatus(nextStatus);
+        api.reportAvatarStatus(nextStatus);
+      }
       if (nextStatus.phase === 'loading' && nextStatus.message.startsWith('Loading VRM 1.0 model:')) {
         bundledMotionModel = null;
         requestedMotionAssets = new Set();

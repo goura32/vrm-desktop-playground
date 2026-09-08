@@ -51,6 +51,30 @@ describe('LipSyncController', () => {
     expect(controller.status.state).toBe('stopped');
   });
 
+  it('clears audio readiness when an audio replacement starts', () => {
+    const clock = new FakeClock();
+    const controller = new LipSyncController({ clock, applyMouthWeights: () => 0 });
+    controller.setTimeline({ version: 1, language: 'English', sourceAudio: 'x.wav', aligner: 'MFA', duration: 1, audioDuration: 1, interpolationMs: 0, keyframes: [{ time: 0, weights: { aa: 1 } }] });
+    controller.setAudioDuration(1);
+
+    controller.clearAudioDuration();
+
+    expect(controller.status.audioDuration).toBe(0);
+    expect(controller.play()).toBe(false);
+  });
+
+  it('records the audio time before a manual stop resets the clock', () => {
+    const clock = new FakeClock();
+    const controller = new LipSyncController({ clock, applyMouthWeights: () => 0 });
+    controller.setTimeline({ version: 1, language: 'English', sourceAudio: 'x.wav', aligner: 'MFA', duration: 1, audioDuration: 1, interpolationMs: 0, keyframes: [{ time: 0, weights: { aa: 1 } }] });
+    controller.setAudioDuration(1);
+    expect(controller.play()).toBe(true);
+    clock.currentTime = 0.5;
+    expect(controller.stop()).toBe(true);
+    expect(controller.status.validation.endDriftMs).toBe(-500);
+    expect(controller.status.validation.cumulativeDriftMs).toBe(-500);
+  });
+
   it('stops the current audio session before replacing its timeline', () => {
     const clock = new FakeClock();
     const controller = new LipSyncController({ clock, applyMouthWeights: () => 0 });

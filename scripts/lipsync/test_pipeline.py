@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import math
 import unittest
 
 from lipsync_pipeline import build_timeline, map_phone, validate_timeline
@@ -13,6 +14,21 @@ class LipSyncPipelineTests(unittest.TestCase):
         self.assertEqual(map_phone('aj')['transition'], ['aa', 'ih'])
         self.assertEqual(map_phone('aw')['transition'], ['aa', 'ou'])
         self.assertEqual(map_phone('ow')['transition'], ['oh', 'ou'])
+
+    def test_rejects_invalid_interpolation(self):
+        for interpolation_ms in (-1, 1001, math.nan, math.inf):
+            with self.subTest(interpolation_ms=interpolation_ms), self.assertRaises(ValueError):
+                build_timeline(
+                    test_id='UNIT',
+                    language='English',
+                    source_audio='UNIT.wav',
+                    audio_duration=1.0,
+                    aligner='MFA',
+                    aligner_version='3.4.3',
+                    acoustic_model='english_mfa',
+                    phone_intervals=[(0.1, 0.4, 'a')],
+                    interpolation_ms=interpolation_ms,
+                )
 
     def test_timeline_has_bounded_weights_and_duration(self):
         timeline = build_timeline(

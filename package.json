@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:lipsync:real": "node scripts/lipsync/real_audio_soak.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {

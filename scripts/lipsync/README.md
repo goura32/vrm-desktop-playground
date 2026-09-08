@@ -33,9 +33,8 @@ MFA_CACHE=/home/ws1/.cache/vrm-phase9-mfa \
 
 Use `english_us_mfa english_mfa` and `mandarin_mfa mandarin_mfa` for English
 and Mandarin. The wrapper mounts the host cache at `/mfa`, matching the
-container's `MFA_ROOT_DIR`; its image default is
-`mmcauliffe/montreal-forced-aligner:latest` and can be overridden with
-`MFA_IMAGE`. MFA JSON/TextGrid files remain external.
+container's `MFA_ROOT_DIR`; its default is pinned to
+`mmcauliffe/montreal-forced-aligner@sha256:1986960fcb5169979630a7efb2576480c587500ab556c9daa66a930f471215b8` and can be overridden with `MFA_IMAGE`. MFA JSON/TextGrid files remain external.
 
 Convert one MFA JSON and its WAV into the app's timeline format:
 
@@ -74,3 +73,17 @@ The interpolation report compares `0`, `40`, `70`, and `100 ms` at a simulated
 records the actual audio-clock session: cue latency p50/p95/max, signed end and
 cumulative drift, refresh estimate, dropped/late frames, invalid weights, and
 mouth-stuck events.
+
+For the real-audio acceptance check, keep the generated artifacts outside Git
+and run the Electron/Web Audio soak:
+
+```bash
+npm run test:lipsync:real -- \
+  /home/ws1/.cache/vrm-phase9-artifacts/LONG01.wav \
+  /home/ws1/.cache/vrm-phase9-timelines/LONG01.json
+```
+
+It decodes and plays the WAV in Chromium's Web Audio implementation through the
+production `AudioClock`/`LipSyncController`, then requires a stopped terminal
+state, at least 30 seconds, zero end/cumulative drift, zero dropped frames, and
+all five mouth presets observed.

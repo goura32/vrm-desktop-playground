@@ -9,6 +9,8 @@ describe('asset validation', () => {
     expect(isLikelyAssetName('character.gltf', 'vrm')).toBe(false);
     expect(isLikelyAssetName('motion.vrm', 'vrma')).toBe(false);
     expect(isLikelyAssetName('../motion.vrma', 'vrma')).toBe(false);
+    expect(isLikelyAssetName('motion.vrm\n', 'vrma')).toBe(false);
+    expect(isFilePayload({ name: 'motion\u0000.vrma', data: new ArrayBuffer(1) })).toBe(false);
   });
 
   it('rejects malformed or oversized IPC file payloads', () => {

@@ -17,6 +17,7 @@ export class AudioClock implements AudioClockLike {
   private offset = 0;
   private startedAt = 0;
   private playbackState: AudioClockState = 'stopped';
+  private loadingGeneration: number | null = null;
 
   private get audioContext(): AudioContext {
     if (!this.context) {
@@ -44,21 +45,33 @@ export class AudioClock implements AudioClockLike {
   }
 
   public async load(data: ArrayBuffer): Promise<number> {
-    this.stop();
-    const generation = ++this.generation;
-    const decoded = await this.audioContext.decodeAudioData(data.slice(0));
-    if (generation !== this.generation) {
-      return this.duration;
+    this.generation += 1;
+    const generation = this.generation;
+    this.loadingGeneration = generation;
+    this.stopSource();
+    this.buffer = null;
+    try {
+      const decoded = await this.audioContext.decodeAudioData(data.slice(0));
+      if (generation !== this.generation) {
+        return 0;
+      }
+      this.buffer = decoded;
+      this.offset = 0;
+      this.playbackState = 'stopped';
+      return decoded.duration;
+    } finally {
+      if (this.loadingGeneration === generation) {
+        this.loadingGeneration = null;
+      }
     }
-    this.buffer = decoded;
-    this.offset = 0;
-    this.playbackState = 'stopped';
-    return decoded.duration;
   }
 
   public play(): boolean {
-    if (!this.buffer || this.playbackState === 'playing') {
-      return Boolean(this.buffer);
+    if (this.loadingGeneration !== null || !this.buffer) {
+      return false;
+    }
+    if (this.playbackState === 'playing') {
+      return true;
     }
     this.offset = Math.min(this.offset, this.buffer.duration);
     if (this.offset >= this.buffer.duration) {
@@ -104,6 +117,21 @@ export class AudioClock implements AudioClockLike {
   public stop(): boolean {
     const hadAudio = Boolean(this.buffer || this.source);
     this.generation += 1;
+    this.loadingGeneration = null;
+    this.stopSource();
+    return hadAudio;
+  }
+
+  public async dispose(): Promise<void> {
+    this.stop();
+    this.buffer = null;
+    if (this.context) {
+      await this.context.close();
+      this.context = null;
+    }
+  }
+
+  private stopSource(): void {
     const source = this.source;
     this.source = null;
     this.offset = 0;
@@ -114,16 +142,6 @@ export class AudioClock implements AudioClockLike {
       } catch {
         // The source may already be stopped.
       }
-    }
-    return hadAudio;
-  }
-
-  public async dispose(): Promise<void> {
-    this.stop();
-    this.buffer = null;
-    if (this.context) {
-      await this.context.close();
-      this.context = null;
     }
   }
 }

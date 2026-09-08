@@ -44,6 +44,13 @@ describe('LipSyncTimeline', () => {
     expect(smoothing.aa).toBeLessThan(1);
   });
 
+  it('rejects control characters and oversized metadata before loading', () => {
+    expect(() => parseLipSyncTimeline({ ...timeline, language: 'English\nInjected' })).toThrow();
+    expect(() => parseLipSyncTimeline({ ...timeline, testId: 'x'.repeat(129) })).toThrow();
+    expect(() => parseLipSyncTimeline({ ...timeline, aligner: 'x'.repeat(129) })).toThrow();
+    expect(() => parseLipSyncTimeline({ ...timeline, keyframes: [{ time: 0, weights: {}, sourcePhone: '\u0000' }] })).toThrow();
+  });
+
   it('rejects a timeline that is not version 1 or has out-of-range weights', () => {
     expect(() => parseLipSyncTimeline({ ...timeline, version: 2 })).toThrow();
     expect(() => parseLipSyncTimeline({ ...timeline, keyframes: [{ time: 0, weights: { aa: 2 } }] })).toThrow();

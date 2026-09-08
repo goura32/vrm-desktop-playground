@@ -26,10 +26,18 @@ DIPHTHONGS = {
     "aj": ("aa", "ih"), "aw": ("aa", "ou"), "ow": ("oh", "ou"), "ɔj": ("oh", "ih"),
 }
 TONE_MARKS = re.compile(r"[˥˦˨˩˧¹²³⁴⁵]")
+CONTROL_CHARACTERS = re.compile(r"[\u0000-\u001f\u007f-\u009f\u2028\u2029]")
 
 
 def empty_weights() -> dict[str, float]:
     return {mouth: 0.0 for mouth in MOUTHS}
+
+
+def _validate_text(value: Any, label: str, maximum: int, *, required: bool = True) -> None:
+    if value is None and not required:
+        return
+    if not isinstance(value, str) or (required and not value) or len(value) > maximum or CONTROL_CHARACTERS.search(value):
+        raise ValueError(f"invalid {label}")
 
 
 def normalize_phone(phone: str) -> str:
@@ -108,8 +116,18 @@ def build_timeline(
     dictionary_model: str | None = None,
     g2p_model: str | None = None,
 ) -> dict[str, Any]:
+    _validate_text(test_id, "test_id", 128)
+    _validate_text(language, "language", 64)
+    _validate_text(source_audio, "source_audio", 255)
+    _validate_text(aligner, "aligner", 128)
+    _validate_text(aligner_version, "aligner_version", 128)
+    _validate_text(acoustic_model, "acoustic_model", 128)
+    _validate_text(dictionary_model, "dictionary_model", 128, required=False)
+    _validate_text(g2p_model, "g2p_model", 128, required=False)
     if not math.isfinite(audio_duration) or audio_duration <= 0:
         raise ValueError("audio_duration must be positive")
+    if not math.isfinite(interpolation_ms) or interpolation_ms < 0 or interpolation_ms > 1000:
+        raise ValueError("interpolation_ms must be finite and between 0 and 1000")
     intervals = sorted(
         (max(0.0, float(start)), min(audio_duration, float(end)), str(phone))
         for start, end, phone in phone_intervals
@@ -162,14 +180,23 @@ def build_timeline(
 
 
 def validate_timeline(timeline: dict[str, Any]) -> None:
-    if timeline.get("version") != 1 or not timeline.get("language") or not timeline.get("sourceAudio") or not timeline.get("aligner"):
+    if timeline.get("version") != 1:
         raise ValueError("invalid timeline metadata")
+    _validate_text(timeline.get("language"), "language", 64)
+    _validate_text(timeline.get("sourceAudio"), "sourceAudio", 255)
+    _validate_text(timeline.get("aligner"), "aligner", 128)
+    for field in ("testId", "alignerVersion", "acousticModel", "dictionaryModel", "g2pModel"):
+        if field in timeline and timeline[field] is not None:
+            _validate_text(timeline[field], field, 128)
     duration = timeline.get("duration")
     audio_duration = timeline.get("audioDuration")
     if not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
         raise ValueError("invalid timeline duration")
     if not isinstance(audio_duration, (int, float)) or not math.isfinite(audio_duration) or audio_duration <= 0:
         raise ValueError("invalid audio duration")
+    interpolation_ms = timeline.get("interpolationMs")
+    if not isinstance(interpolation_ms, (int, float)) or not math.isfinite(interpolation_ms) or interpolation_ms < 0 or interpolation_ms > 1000:
+        raise ValueError("invalid interpolation duration")
     previous = -1.0
     keyframes = timeline.get("keyframes")
     if not isinstance(keyframes, list) or not keyframes:
@@ -184,6 +211,8 @@ def validate_timeline(timeline: dict[str, Any]) -> None:
             raise ValueError("keyframe must contain exactly the five VRM mouth weights")
         if any(not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0 or value > 1 for value in weights.values()):
             raise ValueError("keyframe weights must be finite and bounded")
+        if "sourcePhone" in frame and frame["sourcePhone"] is not None:
+            _validate_text(frame["sourcePhone"], "sourcePhone", 64)
 
 
 def parse_mfa_json(path: Path) -> list[tuple[float, float, str]]:

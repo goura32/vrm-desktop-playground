@@ -200,8 +200,9 @@ export class AvatarRuntime {
   private async loadAudio(fileName: string, data: ArrayBuffer): Promise<void> {
     const requestId = ++this.audioLoadRequestId;
     this.lipSyncController.stop();
+    this.lipSyncController.clearAudioDuration();
     this.publish({
-      lipSync: { ...this.status.lipSync, state: 'loading', currentTime: 0, message: `Decoding lip-sync audio: ${fileName}` },
+      lipSync: { ...this.lipSyncController.status, state: 'loading', currentTime: 0, message: `Decoding lip-sync audio: ${fileName}` },
     });
     try {
       const duration = await this.audioClock.load(data);

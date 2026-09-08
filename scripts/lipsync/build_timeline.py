@@ -24,7 +24,7 @@ def main() -> int:
     parser.add_argument("--test-id", required=True)
     parser.add_argument("--language", required=True)
     parser.add_argument("--source-audio", required=True)
-    parser.add_argument("--aligner-version", default="MFA Docker image: mmcauliffe/montreal-forced-aligner:latest")
+    parser.add_argument("--aligner-version", default="MFA Docker image: mmcauliffe/montreal-forced-aligner@sha256:1986960fcb5169979630a7efb2576480c587500ab556c9daa66a930f471215b8")
     parser.add_argument("--acoustic-model", default="MFA pretrained acoustic model")
     parser.add_argument("--dictionary-model", default=None)
     parser.add_argument("--g2p-model", default=None)
@@ -46,7 +46,7 @@ def main() -> int:
         interpolation_ms=args.interpolation_ms,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(timeline, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    args.output.write_text(json.dumps(timeline, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     print(json.dumps({
         "test_id": args.test_id,
         "language": args.language,

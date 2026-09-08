@@ -138,7 +138,8 @@ native Wayland は受入対象外で、Xwayland 経路を標準とします。`-
 ### Preprocessing evidence
 
 - Qwen3-TTS `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice`, revision `85e237c12c027371202489a0ec509ded67b5e4b5`, speaker `ono_anna` を dedicated Python 3.11 venvでロードし、JP/EN/ZH WAVを生成。リポジトリ内スモーク生成も `qwen-script-smoke.wav` (24 kHz, 3.68 s) で終了コード0。
-- MFA `mmcauliffe/montreal-forced-aligner:latest` (MFA `3.4.3.dev0+gd2dc283bd.d20260820`) をDocker実行。`japanese_mfa`, `english_mfa`, `mandarin_mfa` の3言語をJSON出力し、`JP01.json`, `EN01.json`, `ZH01.json` の phone tierを確認。wrapper経由のEnglish alignmentも1 utterance / 21.242 s / exit 0。
+- MFA `mmcauliffe/montreal-forced-aligner@sha256:1986960fcb5169979630a7efb2576480c587500ab556c9daa66a930f471215b8` (MFA `3.4.3.dev0+gd2dc283bd.d20260820`) をDocker実行。`japanese_mfa`, `english_mfa`, `mandarin_mfa` の3言語をJSON出力し、`JP01.json`, `EN01.json`, `ZH01.json` の phone tierを確認。wrapper経由のEnglish alignmentも1 utterance / 21.242 s / exit 0。
+- `npm run test:lipsync:real` で同じproduction `AudioClock`/`LipSyncController`を通し、JP `8.00 s / 489 frames`、EN `7.60 s / 464 frames`、ZH `7.52 s / 461 frames`を実WAVでdecode/play。各々 stopped、end/cumulative drift 0 ms、dropped frame 0、5口形全てを確認（短尺言語検証は `PHASE9_MIN_DURATION=0`）。
 - `build_timeline.py` でJP/EN/ZHと30秒超 soak用timelineを生成。全出力は `/home/ws1/.cache/vrm-phase9-*` 配下で、Gitには入れていない。
 
 ### Acceptance matrix
@@ -150,7 +151,7 @@ native Wayland は受入対象外で、Xwayland 経路を標準とします。`-
 | 音声クロック同期 | PASS | `AudioClock.currentTime`を唯一の再生基準にし、render elapsedでは進めない。play/pause/resume/stop/replayをテスト。 |
 | 同期ログ・validation | PASS | cue latency p50/p95/max、signed end/cumulative drift、frame/refresh/dropped/late、invalid/missing/stuck、mouth distributionをDebugとmain logへ出力。 |
 | 補間比較 | PASS | 0/40/70/100 msをDebugプリセットと`interpolation_report.py`で比較。 |
-| 30秒以上drift | PASS | `lipsync-audio-long-soak.test.ts` が production `AudioClock`を使い37.04 sを60 Hz相当で2,223 frame再生し、60 Hz推定・end drift 0 ms・cumulative drift 0 msを確認（controller-only soakも併用）。 |
+| 30秒以上drift | PASS | `npm run test:lipsync:real` が実WAV `LONG01.wav` (37.04 s)をElectron Chromium Web Audioでdecode/playし、2,289 frame / 37.059 s、end drift 0 ms・cumulative drift 0 ms・dropped frame 0・5口形全てを確認。VitestのAudioClock-backed deterministic soakも回帰として併用。 |
 | 回帰・build・security | PASS | lint/typecheck/full Vitest/build/auditを最終回帰で再実行。Electron sandbox/contextIsolation/preload IPCと拡張子・サイズ検証を維持。 |
 | Computer Use実画面 | PASS | Electron Avatar/Debug 2窓を実起動し、Computer UseでAvatarのVRM画面とDebugのready/Window probe/Assets UIをcapture確認。実画面の追加入力は既存方針どおりキーボード経路のみ。 |
 | cleanup / git clean | PASS | generated WAV/JSON/logsは外部cache、作業treeにはソース/docs/testsのみ。final `git clean -ndX/-nd`で生成物なしを確認。 |

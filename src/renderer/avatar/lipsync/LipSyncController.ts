@@ -67,8 +67,18 @@ export class LipSyncController {
     }
   }
 
+  public clearAudioDuration(): void {
+    this.audioDuration = 0;
+    this.currentStatus = {
+      ...this.currentStatus,
+      audioDuration: 0,
+      validation: { ...this.currentStatus.validation, durationDeltaMs: null },
+    };
+  }
+
   public setAudioDuration(duration: number): void {
     if (!Number.isFinite(duration) || duration <= 0) {
+      this.clearAudioDuration();
       this.publish({ state: 'error', message: 'Decoded audio has no positive duration.' });
       return;
     }
@@ -118,12 +128,13 @@ export class LipSyncController {
   }
 
   public stop(): boolean {
+    const endTime = this.clock.currentTime;
     const hadPlayback = this.clock.stop() || this.currentStatus.state === 'playing' || this.currentStatus.state === 'paused';
     this.currentSessionId += 1;
     this.applyMouthWeights(createEmptyMouthWeights());
     const shouldFinishRecorder = this.recorder !== null && this.timeline !== null && (this.currentStatus.state === 'playing' || this.currentStatus.state === 'paused');
     if (shouldFinishRecorder && this.recorder && this.timeline) {
-      this.recorder.finish(this.clock.currentTime, this.timeline.duration);
+      this.recorder.finish(endTime, this.timeline.duration);
     }
     this.publish({
       state: 'stopped',

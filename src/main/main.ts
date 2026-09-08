@@ -2,7 +2,6 @@ import { app, BrowserWindow, dialog, ipcMain, screen } from 'electron';
 import type { Display, IpcMainEvent, IpcMainInvokeEvent, OpenDialogOptions, Rectangle } from 'electron';
 import { access, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { BUNDLED_ASSETS, getBundledAsset, isBundledAssetId } from '../shared/bundledAssets';
 import { isFilePayload, isLikelyAssetName, MAX_FILE_BYTES } from '../shared/fileValidation';
 import type { FileKind } from '../shared/fileValidation';
@@ -15,6 +14,7 @@ import { createInitialWindowState } from '../shared/windowState';
 import { DEFAULT_CHARACTER_POSITION } from '../shared/scenePosition';
 import { createInitialLipSyncStatus } from '../shared/lipsync';
 import { getElectronPlatformSwitches } from './platform/linux';
+import { isAllowedRendererFileUrl } from './rendererPolicy';
 
 const DEV_SERVER_URL = 'http://127.0.0.1:5173';
 let avatarWindow: BrowserWindow | null = null;
@@ -61,8 +61,7 @@ function isAllowedRendererUrl(url: string): boolean {
         (parsed.pathname === '/index.html' || parsed.pathname === '/avatar.html');
     }
 
-    const distRoot = pathToFileURL(`${path.join(app.getAppPath(), 'dist')}${path.sep}`).href;
-    return parsed.protocol === 'file:' && url.startsWith(distRoot);
+    return isAllowedRendererFileUrl(url, path.join(app.getAppPath(), 'dist'));
   } catch {
     return false;
   }
@@ -211,9 +210,12 @@ function logLipSyncCue(status: AvatarStatus): void {
 }
 
 function broadcastAvatarStatus(status: AvatarStatus): void {
+  const previousStatus = lastAvatarStatus;
   lastAvatarStatus = status;
   logLipSyncCue(status);
-  log(`avatar status: ${status.phase} — ${status.message}`);
+  if (status.phase !== previousStatus.phase || status.message !== previousStatus.message || status.lipSync.state !== previousStatus.lipSync.state) {
+    log(`avatar status: ${status.phase} — ${status.message}`);
+  }
   if (debugWindow && !debugWindow.isDestroyed()) {
     debugWindow.webContents.send(IPC_CHANNELS.avatarStatus, status);
   }

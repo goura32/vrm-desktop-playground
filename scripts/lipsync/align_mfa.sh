@@ -13,7 +13,7 @@ dictionary_model=$2
 acoustic_model=$3
 output_dir=$(realpath -m "$4")
 mfa_cache=${MFA_CACHE:-"$HOME/.cache/vrm-phase9-mfa"}
-mfa_image=${MFA_IMAGE:-mmcauliffe/montreal-forced-aligner:latest}
+mfa_image=${MFA_IMAGE:-mmcauliffe/montreal-forced-aligner@sha256:1986960fcb5169979630a7efb2576480c587500ab556c9daa66a930f471215b8}
 mkdir -p "$output_dir" "$mfa_cache"
 
 docker run --rm \

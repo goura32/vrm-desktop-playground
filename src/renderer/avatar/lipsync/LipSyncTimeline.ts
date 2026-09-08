@@ -9,6 +9,17 @@ function finite(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+function hasControlCharacters(value: string): boolean {
+  return [...value].some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f) || codePoint === 0x2028 || codePoint === 0x2029;
+  });
+}
+
+function boundedString(value: unknown, maximum: number): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= maximum && !hasControlCharacters(value);
+}
+
 function fullWeights(value: Partial<Record<VrmMouth, number>> | undefined): MouthWeights {
   const weights = createEmptyMouthWeights();
   for (const mouth of VRM_MOUTH_EXPRESSIONS) {
@@ -33,20 +44,24 @@ function normalizeKeyframe(value: unknown, index: number): LipSyncKeyframe {
     weights[name as VrmMouth] = candidate;
   }
   const sourcePhone = value.sourcePhone;
-  if (sourcePhone !== undefined && (typeof sourcePhone !== 'string' || sourcePhone.length > 64)) {
+  if (sourcePhone !== undefined && !boundedString(sourcePhone, 64)) {
     throw new Error(`Invalid source phone at keyframe ${index}.`);
   }
   return { time: value.time, weights, ...(sourcePhone === undefined ? {} : { sourcePhone }) };
 }
 
 export function parseLipSyncTimeline(value: unknown): LipSyncTimeline {
-  if (!isRecord(value) || value.version !== 1 || typeof value.language !== 'string' || value.language.length === 0 ||
-      typeof value.sourceAudio !== 'string' || value.sourceAudio.length === 0 || typeof value.aligner !== 'string' ||
-      value.aligner.length === 0 || !finite(value.duration) || value.duration <= 0 ||
+  if (!isRecord(value) || value.version !== 1 || !boundedString(value.language, 64) ||
+      !boundedString(value.sourceAudio, 255) || !boundedString(value.aligner, 128) || !finite(value.duration) || value.duration <= 0 ||
       !finite(value.audioDuration) || value.audioDuration <= 0 || !finite(value.interpolationMs) ||
       value.interpolationMs < 0 || value.interpolationMs > 1000 || !Array.isArray(value.keyframes) ||
       value.keyframes.length === 0 || value.keyframes.length > 100000) {
     throw new Error('Invalid LipSyncTimeline v1 metadata.');
+  }
+  for (const [field, maximum] of [['testId', 128], ['alignerVersion', 128], ['acousticModel', 128], ['dictionaryModel', 128], ['g2pModel', 128]] as const) {
+    if (value[field] !== undefined && !boundedString(value[field], maximum)) {
+      throw new Error(`Invalid ${field} metadata.`);
+    }
   }
   const keyframes = value.keyframes.map(normalizeKeyframe);
   if (keyframes[0].time > value.duration) {
