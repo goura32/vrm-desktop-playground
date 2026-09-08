@@ -51,6 +51,18 @@ describe('LipSyncController', () => {
     expect(controller.status.state).toBe('stopped');
   });
 
+  it('stops the current audio session before replacing its timeline', () => {
+    const clock = new FakeClock();
+    const controller = new LipSyncController({ clock, applyMouthWeights: () => 0 });
+    const timeline = { version: 1 as const, language: 'English', sourceAudio: 'x.wav', aligner: 'MFA', duration: 1, audioDuration: 1, interpolationMs: 0, keyframes: [{ time: 0, weights: { aa: 1 } }] };
+    controller.setTimeline(timeline);
+    controller.setAudioDuration(1);
+    expect(controller.play()).toBe(true);
+    expect(controller.setTimeline({ ...timeline, testId: 'replacement' })).toBe(true);
+    expect(clock.state).toBe('stopped');
+    expect(controller.status.state).toBe('ready');
+  });
+
   it('keeps the final validation summary after natural end and supports replay', () => {
     const clock = new FakeClock();
     const controller = new LipSyncController({ clock, applyMouthWeights: () => 0 });

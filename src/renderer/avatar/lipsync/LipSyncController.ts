@@ -42,6 +42,9 @@ export class LipSyncController {
   }
 
   public setTimeline(input: LipSyncTimeline | unknown): boolean {
+    if (this.currentStatus.state === 'playing' || this.currentStatus.state === 'paused' || this.clock.state !== 'stopped') {
+      this.stop();
+    }
     try {
       this.timeline = parseLipSyncTimeline(input);
       this.interpolationMs = this.timeline.interpolationMs;
