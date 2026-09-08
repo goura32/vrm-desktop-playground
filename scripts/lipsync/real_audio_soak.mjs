@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* Test-only hidden Electron harness; it is not part of the production window path. */
 import { promises as fs, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,6 +24,7 @@ const cleanupTemporaryRoot = () => fs.rm(temporaryRoot, { recursive: true, force
 const entryPath = path.join(temporaryRoot, 'entry.ts');
 const bundlePath = path.join(temporaryRoot, 'entry.js');
 const htmlPath = path.join(temporaryRoot, 'index.html');
+const preloadPath = path.join(temporaryRoot, 'preload.cjs');
 const mainPath = path.join(temporaryRoot, 'main.cjs');
 
 const browserEntry = `
@@ -31,14 +33,17 @@ import { LipSyncController } from ${JSON.stringify(path.join(repositoryRoot, 'sr
 
 const audioPath = ${JSON.stringify(audioPath)};
 const timelinePath = ${JSON.stringify(timelinePath)};
-const fs = window.require('node:fs');
-const { ipcRenderer } = window.require('electron');
+const phase9 = window.phase9;
 const sleep = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+const decodeBase64 = (value) => {
+  const binary = window.atob(value);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return bytes.buffer;
+};
 
 async function run() {
-  const audioBytes = fs.readFileSync(audioPath);
-  const audioData = audioBytes.buffer.slice(audioBytes.byteOffset, audioBytes.byteOffset + audioBytes.byteLength);
-  const timeline = JSON.parse(fs.readFileSync(timelinePath, 'utf8'));
+  const audioData = decodeBase64(phase9.readBase64(audioPath));
+  const timeline = JSON.parse(phase9.readText(timelinePath));
   const mouthsSeen = new Set();
   const clock = new AudioClock();
   const controller = new LipSyncController({
@@ -76,13 +81,24 @@ async function run() {
     mouthsSeen: [...mouthsSeen].sort(),
   };
   await clock.dispose();
-  ipcRenderer.send('phase9-result', result);
+  phase9.sendResult(result);
   window.close();
 }
 
 run().catch((error) => {
-  ipcRenderer.send('phase9-error', error?.stack ?? String(error));
+  phase9.sendError(error?.stack ?? String(error));
   window.close();
+});
+`;
+
+const preloadSource = `
+const { contextBridge, ipcRenderer } = require('electron');
+const fs = require('node:fs');
+contextBridge.exposeInMainWorld('phase9', {
+  readBase64: (filePath) => fs.readFileSync(filePath).toString('base64'),
+  readText: (filePath) => fs.readFileSync(filePath, 'utf8'),
+  sendResult: (result) => ipcRenderer.send('phase9-result', result),
+  sendError: (message) => ipcRenderer.send('phase9-error', message),
 });
 `;
 
@@ -102,7 +118,7 @@ ipcMain.on('phase9-error', (_event, message) => {
 app.whenReady().then(async () => {
   const window = new BrowserWindow({
     show: false,
-    webPreferences: { contextIsolation: false, nodeIntegration: true, sandbox: false },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: false, preload: ${JSON.stringify(preloadPath)} },
   });
   window.webContents.on('render-process-gone', (_event, details) => {
     process.stderr.write('PHASE9_REAL_AUDIO_SOAK_RENDERER_GONE ' + JSON.stringify(details) + '\\n');
@@ -116,6 +132,7 @@ app.on('window-all-closed', () => app.quit());
 
 await fs.writeFile(entryPath, browserEntry, 'utf8');
 await fs.writeFile(htmlPath, '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\'"></head><body><script src="./entry.js"></script></body></html>\n', 'utf8');
+await fs.writeFile(preloadPath, preloadSource, 'utf8');
 await fs.writeFile(mainPath, electronMain, 'utf8');
 await build({
   absWorkingDir: repositoryRoot,
