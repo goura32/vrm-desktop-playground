@@ -29,6 +29,17 @@ class LipSyncPipelineTests(unittest.TestCase):
                     phone_intervals=[(0.1, 0.4, 'a')],
                     interpolation_ms=interpolation_ms,
                 )
+        with self.assertRaises(ValueError):
+            build_timeline(
+                test_id='😀' * 65,
+                language='English',
+                source_audio='UNIT.wav',
+                audio_duration=1.0,
+                aligner='MFA',
+                aligner_version='3.4.3',
+                acoustic_model='english_mfa',
+                phone_intervals=[(0.1, 0.4, 'a')],
+            )
 
     def test_timeline_has_bounded_weights_and_duration(self):
         timeline = build_timeline(

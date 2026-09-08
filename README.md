@@ -39,7 +39,7 @@ npm run build
 
 `Open audio` and `Open lip-sync timeline` in the Debug Window load external WAV and MFA-derived JSON. Playback is driven by the decoded audio clock; `Play`, `Pause`, `Resume`, `Stop`, replay-after-ended, and interpolation presets are available. The Debug Window reports source phone, dominant VRM mouth, model mouth override mode, cue latency, signed drift, refresh estimate, dropped/late frames, and validation counts.
 
-Qwen3-TTS/MFA preprocessing stays outside the npm graph. Follow [`scripts/lipsync/README.md`](scripts/lipsync/README.md) to generate JP/EN/ZH WAVs with the pinned Qwen revision, align them with MFA Docker, and build timelines. Generated artifacts belong under `/home/ws1/.cache/vrm-phase9-*`, not in Git.
+Qwen3-TTS/MFA preprocessing stays outside the npm graph. Follow [`scripts/lipsync/README.md`](scripts/lipsync/README.md) to generate JP/EN/ZH WAVs with the pinned Qwen revision, align them with MFA Docker, and build timelines. Generated artifacts belong under `/home/ws1/.cache/vrm-phase9-*`, not in Git. With generated LONG01 fixtures, `npm run test:lipsync:real` exercises the production AudioClock/LipSyncController against real Chromium Web Audio for the 30-second-plus drift acceptance.
 
 native Wayland は今回の受入対象外です。複数キャラクター、インストーラー、自動アップデート、クラウド同期も対象外です。`--no-sandbox` はこの PoC の Ubuntu 実行環境で Electron の setuid sandbox helper を利用できないための開発用起動条件であり、本番配布向け設定ではありません。
 

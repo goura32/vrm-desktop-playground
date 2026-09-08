@@ -21,8 +21,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function hasControlCharacters(value: string): boolean {
+  return [...value].some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f) || codePoint === 0x2028 || codePoint === 0x2029;
+  });
+}
+
+function isSafeString(value: unknown, maxLength: number, requireNonEmpty = false): value is string {
+  return typeof value === 'string' && (!requireNonEmpty || value.length > 0) && value.length <= maxLength && !hasControlCharacters(value);
+}
+
 function isBoundedString(value: unknown, maxLength = 255): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= maxLength;
+  return isSafeString(value, maxLength, true);
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -122,17 +133,17 @@ function isLipSyncStatus(value: unknown): value is LipSyncStatus {
     return false;
   }
   return typeof value.state === 'string' && LIP_SYNC_STATES.includes(value.state as (typeof LIP_SYNC_STATES)[number]) &&
-    typeof value.message === 'string' && value.message.length <= 1000 &&
+    isSafeString(value.message, 1000) &&
     isFiniteNumber(value.currentTime) && value.currentTime >= 0 &&
     (value.audioDuration === null || (isFiniteNumber(value.audioDuration) && value.audioDuration > 0)) &&
     (value.timelineDuration === null || (isFiniteNumber(value.timelineDuration) && value.timelineDuration > 0)) &&
-    (value.testId === null || (typeof value.testId === 'string' && value.testId.length <= 128)) &&
-    (value.language === null || (typeof value.language === 'string' && value.language.length <= 64)) &&
-    (value.sourcePhone === null || (typeof value.sourcePhone === 'string' && value.sourcePhone.length <= 64)) &&
+    (value.testId === null || isSafeString(value.testId, 128)) &&
+    (value.language === null || isSafeString(value.language, 64)) &&
+    (value.sourcePhone === null || isSafeString(value.sourcePhone, 64)) &&
     (value.dominantMouth === null || VRM_MOUTH_EXPRESSIONS.includes(value.dominantMouth as VrmMouth)) &&
     isLipSyncWeights(value.weights) && isFiniteNumber(value.interpolationMs) && value.interpolationMs >= 0 && value.interpolationMs <= 1000 &&
-    (value.aligner === null || (typeof value.aligner === 'string' && value.aligner.length <= 128)) &&
-    (value.alignerVersion === null || (typeof value.alignerVersion === 'string' && value.alignerVersion.length <= 128)) &&
+    (value.aligner === null || isSafeString(value.aligner, 128)) &&
+    (value.alignerVersion === null || isSafeString(value.alignerVersion, 128)) &&
     isLipSyncValidation(value.validation);
 }
 
@@ -193,7 +204,7 @@ export function isAvatarStatus(value: unknown): value is AvatarStatus {
   }
   return (
     typeof value.phase === 'string' && AVATAR_PHASES.includes(value.phase as (typeof AVATAR_PHASES)[number]) &&
-    typeof value.message === 'string' && value.message.length <= 1000 &&
+    isSafeString(value.message, 1000) &&
     (value.model === null || isVrmModelInfo(value.model)) &&
     Array.isArray(value.motions) && value.motions.length <= 100 && value.motions.every((motion) => isMotionInfo(motion)) &&
     (value.activeMotionId === null || isBoundedString(value.activeMotionId)) &&

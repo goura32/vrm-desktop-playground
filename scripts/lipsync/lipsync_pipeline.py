@@ -33,10 +33,17 @@ def empty_weights() -> dict[str, float]:
     return {mouth: 0.0 for mouth in MOUTHS}
 
 
+def _utf16_length(value: str) -> int:
+    try:
+        return len(value.encode("utf-16-le")) // 2
+    except UnicodeEncodeError:
+        return 10**9
+
+
 def _validate_text(value: Any, label: str, maximum: int, *, required: bool = True) -> None:
     if value is None and not required:
         return
-    if not isinstance(value, str) or (required and not value) or len(value) > maximum or CONTROL_CHARACTERS.search(value):
+    if not isinstance(value, str) or (required and not value) or _utf16_length(value) > maximum or CONTROL_CHARACTERS.search(value):
         raise ValueError(f"invalid {label}")
 
 

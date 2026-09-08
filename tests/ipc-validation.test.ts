@@ -46,5 +46,7 @@ describe('IPC runtime validation', () => {
     expect(isAvatarStatus({ ...status, phase: 'broken' })).toBe(false);
     expect(isAvatarStatus({ ...status, characterPosition: { x: -1, y: 0.5 } })).toBe(false);
     expect(isAvatarStatus({ ...status, lipSync: { ...status.lipSync, weights: { ...status.lipSync.weights, extra: 0 } } })).toBe(false);
+    expect(isAvatarStatus({ ...status, message: 'log\u0000injection' })).toBe(false);
+    expect(isAvatarStatus({ ...status, lipSync: { ...status.lipSync, language: 'English\nInjected' } })).toBe(false);
   });
 });
