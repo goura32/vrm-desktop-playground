@@ -160,7 +160,9 @@ if (exitCode !== 0 || !match) {
   throw new Error(`real audio soak did not produce a result (exit ${exitCode})`);
 }
 const result = JSON.parse(match[1]);
-const accepted = result.played && result.finalState === 'stopped' && result.duration >= minimumDuration && result.frames >= Math.max(1, Math.floor(result.duration * 10)) && result.endDriftMs === 0 && result.droppedFrameCount === 0;
+const expectedMouths = ['aa', 'ih', 'ou', 'ee', 'oh'];
+const allMouthsSeen = expectedMouths.every((mouth) => result.mouthsSeen.includes(mouth));
+const accepted = result.played && result.finalState === 'stopped' && result.duration >= minimumDuration && result.frames >= Math.max(1, Math.floor(result.duration * 10)) && result.endDriftMs === 0 && result.cumulativeDriftMs === 0 && result.droppedFrameCount === 0 && allMouthsSeen;
 await cleanupTemporaryRoot();
 if (!accepted) {
   throw new Error(`real audio soak acceptance failed: ${JSON.stringify(result)}`);
