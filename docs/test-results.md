@@ -151,7 +151,7 @@ native Wayland は受入対象外で、Xwayland 経路を標準とします。`-
 | 音声クロック同期 | PASS | `AudioClock.currentTime`を唯一の再生基準にし、render elapsedでは進めない。play/pause/resume/stop/replayをテスト。 |
 | 同期ログ・validation | PASS | cue latency p50/p95/max、signed end/cumulative drift、frame/refresh/dropped/late、invalid/missing/stuck、mouth distributionをDebugとmain logへ出力。 |
 | 補間比較 | PASS | 0/40/70/100 msをDebugプリセットと`interpolation_report.py`で比較。 |
-| 30秒以上drift | PASS | `npm run test:lipsync:real` が実WAV `LONG01.wav` (37.04 s)をElectron Chromium Web Audioでdecode/playし、2,294 frame / 37.056 s、end drift 0 ms・cumulative drift 0 ms・dropped frame 0・5口形全てを確認。VitestのAudioClock-backed deterministic soakも回帰として併用。 |
+| 30秒以上drift | PASS | `npm run test:lipsync:real` が実WAV `LONG01.wav` (37.04 s)をElectron Chromium Web Audioでdecode/playし、2,287 frame / 37.059 s、end drift 0 ms・cumulative drift 0 ms・dropped frame 0・5口形全てを確認。VitestのAudioClock-backed deterministic soakも回帰として併用。 |
 | 回帰・build・security | PASS | `npm test` 24 files / 66 tests、Python 3 tests、lint/typecheck/build/auditを最終回帰で再実行。Electron sandbox/contextIsolation/preload IPCと拡張子・サイズ・control-character検証を維持。 |
 | Computer Use実画面 | PASS | Electron Avatar/Debug 2窓を実起動し、Computer UseでAvatarのVRM画面とDebugのready/Window probe/Assets UIをcapture確認。実画面の追加入力は既存方針どおりキーボード経路のみ。 |
 | cleanup / git clean | PASS | generated WAV/JSON/logsは外部cache、作業treeにはソース/docs/testsのみ。final `git clean -ndX/-nd`で生成物なしを確認。 |

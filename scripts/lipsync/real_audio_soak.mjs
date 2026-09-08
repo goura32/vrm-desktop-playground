@@ -25,6 +25,7 @@ const entryPath = path.join(temporaryRoot, 'entry.ts');
 const bundlePath = path.join(temporaryRoot, 'entry.js');
 const htmlPath = path.join(temporaryRoot, 'index.html');
 const preloadPath = path.join(temporaryRoot, 'preload.cjs');
+const userDataPath = path.join(temporaryRoot, 'user-data');
 const mainPath = path.join(temporaryRoot, 'main.cjs');
 
 const browserEntry = `
@@ -40,9 +41,31 @@ const decodeBase64 = (value) => {
   const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
   return bytes.buffer;
 };
+const readAudioFile = (filePath) => {
+  const chunkSize = 256 * 1024;
+  let offset = 0;
+  const chunks = [];
+  let totalBytes = 0;
+  while (true) {
+    const chunk = phase9.readBase64Chunk(filePath, offset, chunkSize);
+    offset += chunk.byteLength;
+    const bytes = new Uint8Array(decodeBase64(chunk.base64));
+    chunks.push(bytes);
+    totalBytes += bytes.byteLength;
+    if (chunk.byteLength < chunkSize) {
+      const result = new Uint8Array(totalBytes);
+      let resultOffset = 0;
+      for (const part of chunks) {
+        result.set(part, resultOffset);
+        resultOffset += part.byteLength;
+      }
+      return result.buffer;
+    }
+  }
+};
 
 async function run() {
-  const audioData = decodeBase64(phase9.readBase64(audioPath));
+  const audioData = readAudioFile(audioPath);
   const timeline = JSON.parse(phase9.readText(timelinePath));
   const mouthsSeen = new Set();
   const clock = new AudioClock();
@@ -95,7 +118,13 @@ const preloadSource = `
 const { contextBridge, ipcRenderer } = require('electron');
 const fs = require('node:fs');
 contextBridge.exposeInMainWorld('phase9', {
-  readBase64: (filePath) => fs.readFileSync(filePath).toString('base64'),
+  readBase64Chunk: (filePath, offset, length) => {
+    const descriptor = fs.openSync(filePath, 'r');
+    const buffer = Buffer.alloc(length);
+    const byteLength = fs.readSync(descriptor, buffer, 0, length, offset);
+    fs.closeSync(descriptor);
+    return { base64: buffer.subarray(0, byteLength).toString('base64'), byteLength };
+  },
   readText: (filePath) => fs.readFileSync(filePath, 'utf8'),
   sendResult: (result) => ipcRenderer.send('phase9-result', result),
   sendError: (message) => ipcRenderer.send('phase9-error', message),
@@ -104,7 +133,9 @@ contextBridge.exposeInMainWorld('phase9', {
 
 const electronMain = `
 const { app, BrowserWindow, ipcMain } = require('electron');
+app.setPath('userData', ${JSON.stringify(userDataPath)});
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 ipcMain.on('phase9-result', (_event, result) => {
   process.stdout.write('PHASE9_REAL_AUDIO_SOAK ' + JSON.stringify(result) + '\\n');
