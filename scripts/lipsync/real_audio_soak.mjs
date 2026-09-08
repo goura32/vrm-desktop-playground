@@ -19,6 +19,7 @@ if (!Number.isFinite(minimumDuration) || minimumDuration < 0) {
 }
 const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'vrm-phase9-real-audio-'));
 process.on('exit', () => rmSync(temporaryRoot, { recursive: true, force: true }));
+const cleanupTemporaryRoot = () => fs.rm(temporaryRoot, { recursive: true, force: true });
 const entryPath = path.join(temporaryRoot, 'entry.ts');
 const bundlePath = path.join(temporaryRoot, 'entry.js');
 const htmlPath = path.join(temporaryRoot, 'index.html');
@@ -74,8 +75,8 @@ async function run() {
     mouthDistribution: controller.status.validation.mouthDistribution,
     mouthsSeen: [...mouthsSeen].sort(),
   };
-  ipcRenderer.send('phase9-result', result);
   await clock.dispose();
+  ipcRenderer.send('phase9-result', result);
   window.close();
 }
 
@@ -91,12 +92,12 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 ipcMain.on('phase9-result', (_event, result) => {
   process.stdout.write('PHASE9_REAL_AUDIO_SOAK ' + JSON.stringify(result) + '\\n');
-  app.quit();
+  app.exit(0);
 });
 ipcMain.on('phase9-error', (_event, message) => {
   process.stderr.write('PHASE9_REAL_AUDIO_SOAK_ERROR ' + message + '\\n');
   process.exitCode = 1;
-  app.quit();
+  app.exit(1);
 });
 app.whenReady().then(async () => {
   const window = new BrowserWindow({
@@ -106,7 +107,7 @@ app.whenReady().then(async () => {
   window.webContents.on('render-process-gone', (_event, details) => {
     process.stderr.write('PHASE9_REAL_AUDIO_SOAK_RENDERER_GONE ' + JSON.stringify(details) + '\\n');
     process.exitCode = 1;
-    app.quit();
+    app.exit(1);
   });
   await window.loadFile(${JSON.stringify(htmlPath)});
 });
@@ -155,10 +156,13 @@ const exitCode = await new Promise((resolve, reject) => {
 });
 const match = output.match(/PHASE9_REAL_AUDIO_SOAK (\{.*\})/);
 if (exitCode !== 0 || !match) {
+  await cleanupTemporaryRoot();
   throw new Error(`real audio soak did not produce a result (exit ${exitCode})`);
 }
 const result = JSON.parse(match[1]);
-if (!result.played || result.finalState !== 'stopped' || result.duration < minimumDuration || result.frames < Math.max(1, Math.floor(result.duration * 10)) || result.endDriftMs !== 0 || result.droppedFrameCount !== 0) {
+const accepted = result.played && result.finalState === 'stopped' && result.duration >= minimumDuration && result.frames >= Math.max(1, Math.floor(result.duration * 10)) && result.endDriftMs === 0 && result.droppedFrameCount === 0;
+await cleanupTemporaryRoot();
+if (!accepted) {
   throw new Error(`real audio soak acceptance failed: ${JSON.stringify(result)}`);
 }
 process.stdout.write(JSON.stringify({ accepted: true, ...result }) + '\n');
